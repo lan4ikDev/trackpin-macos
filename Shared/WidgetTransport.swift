@@ -45,7 +45,7 @@ enum WidgetTransport {
 
         var timeout: Double {
             if case .snapshot = self { return 1.5 }
-            return 6 // AppleScript may take a few seconds when Spotify is busy.
+            return 6 // AppleScript may take a few seconds when the player is busy.
         }
     }
 

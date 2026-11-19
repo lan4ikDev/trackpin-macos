@@ -215,6 +215,8 @@ struct MiniPlayerView: View {
             .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
     }
 
+    private var name: String { player.source.title }
+
     @ViewBuilder private var card: some View {
         switch player.playback {
         case let .track(track):
@@ -222,17 +224,13 @@ struct MiniPlayerView: View {
                       accent: colors.accent, width: width, padding: padding, corner: corner,
                       hovering: hovering, close: close, showSettings: showSettings)
         case .closed:
-            message("music.note", "Spotify закрыт", "Запусти Spotify, и здесь появится трек.", "Открыть Spotify", player.openSpotify)
+            message("music.note", "Плеер закрыт", "Запусти \(name), и здесь появится трек.", "Открыть \(name)", player.openPlayer)
         case .idle:
-            message("music.note.list", "Ничего не играет", "Включи трек в Spotify.", "Открыть Spotify", player.openSpotify)
+            message("music.note.list", "Ничего не играет", "Включи трек в плеере «\(name)».", "Открыть \(name)", player.openPlayer)
         case .denied:
-            message("lock.fill", "Нужен доступ", "Разреши TrackPin управлять Spotify в разделе «Автоматизация».", "Открыть настройки") {
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
+            message("lock.fill", "Нужен доступ", player.source.accessHint, "Открыть настройки", player.source.requestAccess)
         case .unavailable:
-            message("exclamationmark.triangle.fill", "Spotify не ответил", "Проверь, что плеер запущен.", "Повторить", player.retry)
+            message("exclamationmark.triangle.fill", "Плеер не ответил", "Проверь, что плеер запущен.", "Повторить", player.retry)
         }
     }
 
@@ -354,7 +352,7 @@ private struct TrackCard: View {
                 CircleButton(icon: "gearshape.fill", label: "Настройки", action: showSettings)
                 sleepMenu
                 Spacer()
-                CircleButton(icon: "arrow.up.forward.app.fill", label: "Открыть в Spotify", action: player.openSpotify)
+                CircleButton(icon: "arrow.up.forward.app.fill", label: "Открыть \(player.source.title)", action: player.openPlayer)
                 CircleButton(icon: "xmark", label: "Закрыть", action: close)
             }
             .padding(8)
@@ -513,7 +511,7 @@ private struct TrackCard: View {
 }
 
 /// The seek bar. The position of a playing track is extrapolated from the last read, so the
-/// bar moves smoothly while Spotify is only asked once a second (or less).
+/// bar moves smoothly while the player is only asked once a second (or less).
 private struct ScrubBar: View {
     @ObservedObject var player: Player
     let track: Track
@@ -574,7 +572,7 @@ private struct ScrubBar: View {
     private func displayed(at date: Date) -> Double {
         if let dragging { return dragging }
         let elapsed = track.playing ? date.timeIntervalSince(player.sampledAt) : 0
-        // Until Spotify reports the new position, keep showing where the user seeked to.
+        // Until the player reports the new position, keep showing where the user seeked to.
         if let target, date.timeIntervalSince(targetSetAt) < 3 {
             let landed = abs(track.position - target) < 2 && player.sampledAt > targetSetAt
             if !landed { return min(track.duration, target + (track.playing ? date.timeIntervalSince(targetSetAt) : 0)) }

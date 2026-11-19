@@ -13,7 +13,7 @@ struct SettingsView: View {
                 .tabItem { Label("Виджет", systemImage: "rectangle.3.group") }
             MiniPlayerSettings(preferences: preferences, showMiniPlayer: showMiniPlayer)
                 .tabItem { Label("Мини-плеер", systemImage: "rectangle.portrait.on.rectangle.portrait") }
-            GeneralSettings(preferences: preferences)
+            GeneralSettings(preferences: preferences, player: player)
                 .tabItem { Label("Основные", systemImage: "gearshape") }
             HelpSettings(player: player, publisher: publisher)
                 .tabItem { Label("Доступ и помощь", systemImage: "questionmark.circle") }
@@ -90,7 +90,7 @@ private struct AppearanceSettings: View {
                     Picker("Обложка", selection: $preferences.style.artwork) {
                         ForEach(ArtworkShape.allCases) { Text($0.title).tag($0) }
                     }
-                    Toggle("Заголовок «Spotify»", isOn: $preferences.style.showHeader)
+                    Toggle("Заголовок с названием плеера", isOn: $preferences.style.showHeader)
                     Toggle("Исполнитель", isOn: $preferences.style.showArtist)
                     Toggle("Полоса прогресса", isOn: $preferences.style.showProgress)
                     Toggle("Время трека", isOn: $preferences.style.showTime)
@@ -208,11 +208,29 @@ private struct ThemeGrid: View {
 
 private struct GeneralSettings: View {
     @ObservedObject var preferences: Preferences
+    @ObservedObject var player: Player
     @State private var loginEnabled = LoginItem.enabled
     @State private var loginError: String?
 
     var body: some View {
         Form {
+            Section {
+                Picker("Источник музыки", selection: $preferences.sourceSelection) {
+                    ForEach(SourceSelection.allCases) { Text($0.title).tag($0) }
+                }
+                if preferences.sourceSelection == .automatic {
+                    Toggle("Искать Яндекс Музыку во вкладках браузера", isOn: $preferences.scansBrowser)
+                    LabeledContent("Сейчас", value: player.source.settingsTitle)
+                }
+                if player.playback == .denied {
+                    Text(player.source.accessHint).font(.caption).foregroundStyle(.orange)
+                    Button("Открыть настройки доступа") { player.source.requestAccess() }
+                }
+            } header: {
+                Text("Плеер")
+            } footer: {
+                Text(sourceFooter)
+            }
             Section("Запуск") {
                 Toggle("Открывать TrackPin при входе в систему", isOn: Binding(
                     get: { loginEnabled },
@@ -242,7 +260,7 @@ private struct GeneralSettings: View {
                 Text("Уведомление не показывается, пока открыт мини-плеер. Если оно не появляется, разреши уведомления TrackPin в «Системных настройках» → «Уведомления». Таймер сна — в мини-плеере (значок луны) и в меню иконки в строке меню.")
             }
             Section("Поведение виджета") {
-                Toggle("Кнопка воспроизведения запускает Spotify, если он закрыт", isOn: $preferences.launchSpotifyOnPlay)
+                Toggle("Кнопка воспроизведения запускает плеер, если он закрыт", isOn: $preferences.launchSpotifyOnPlay)
             }
             Section {
                 Picker("Пока открыт мини-плеер или настройки", selection: $preferences.refreshInterval) {
@@ -251,18 +269,31 @@ private struct GeneralSettings: View {
                     Text("Раз в 5 секунд").tag(5.0)
                 }
                 Picker("В фоне, пока играет музыка", selection: $preferences.backgroundInterval) {
-                    Text("Только по событиям Spotify").tag(0.0)
+                    Text("Только по событиям плеера").tag(0.0)
                     Text("Раз в 30 секунд").tag(30.0)
                     Text("Раз в 2 минуты").tag(120.0)
                 }
             } header: {
                 Text("Энергосбережение")
             } footer: {
-                Text("Spotify сам сообщает о паузе и смене трека, и TrackPin обновляет виджет сразу. Опрос в фоне нужен только чтобы заметить перемотку внутри Spotify. На паузе и при закрытом Spotify TrackPin ничего не опрашивает.")
+                Text("Spotify и Apple Music сами сообщают о паузе и смене трека, и TrackPin обновляет виджет сразу. Опрос в фоне нужен, чтобы заметить перемотку внутри плеера, и для Яндекс Музыки, которая ни о чём не сообщает. На паузе и при закрытом плеере TrackPin почти ничего не опрашивает.")
             }
         }
         .formStyle(.grouped)
         .onAppear { loginEnabled = LoginItem.enabled }
+    }
+
+    private var sourceFooter: String {
+        switch preferences.sourceSelection {
+        case .automatic:
+            "TrackPin показывает тот плеер, который сейчас играет: Spotify, Apple Music или приложение Яндекс Музыки. Браузер проверяется, только если включить переключатель выше."
+        case .fixed(.spotify), .fixed(.appleMusic):
+            "Нужно разрешение в разделе «Автоматизация». macOS спросит его при первом обращении."
+        case .fixed(.yandexApp):
+            "Нужен «Универсальный доступ» для TrackPin: Яндекс Музыка не даёт другим приложениям данных о треке, поэтому TrackPin читает её окно, как VoiceOver. После каждой новой сборки TrackPin доступ может понадобиться выдать заново."
+        case .fixed(.yandexWeb):
+            "Работает с вкладкой music.yandex.ru в Safari, Chrome, Яндекс Браузере, Arc, Edge, Brave и Vivaldi. В браузере нужно включить «Разрешить JavaScript из Apple Events»: в Safari это меню «Разработка», в Chrome-подобных браузерах «Вид → Разработчикам»."
+        }
     }
 }
 
@@ -275,19 +306,18 @@ private struct HelpSettings: View {
     var body: some View {
         Form {
             Section("Состояние") {
-                LabeledContent("Spotify", value: spotifyStatus)
+                LabeledContent(player.source.settingsTitle, value: spotifyStatus)
                 LabeledContent("Связь с виджетом", value: publisher.listening ? "Работает" : "Не запущена")
                 if player.playback == .denied {
-                    Button("Открыть настройки «Автоматизация»") {
-                        open("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
-                    }
+                    Text(player.source.accessHint).font(.caption).foregroundStyle(.secondary)
+                    Button("Открыть настройки доступа") { player.source.requestAccess() }
                 }
             }
             Section("Как добавить виджет") {
                 Text("""
                 1. Щёлкни правой кнопкой по рабочему столу и выбери «Изменить виджеты».
                 2. Найди TrackPin в списке слева.
-                3. Перетащи «Spotify» или «Обложка» нужного размера на рабочий стол.
+                3. Перетащи «Плеер» или «Обложка» нужного размера на рабочий стол.
                 4. Двигай виджет как любой другой. Правый клик по нему → «Изменить виджет» меняет тему и кнопки только для него.
                 """)
                 .fixedSize(horizontal: false, vertical: true)
@@ -302,7 +332,7 @@ private struct HelpSettings: View {
             }
             Section {
                 LabeledContent("Версия", value: version)
-                Text("TrackPin — независимый проект и не связан со Spotify.")
+                Text("TrackPin — независимый проект и не связан со Spotify, Apple или Яндексом.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

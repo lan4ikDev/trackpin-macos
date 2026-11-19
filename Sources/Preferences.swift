@@ -8,7 +8,7 @@ enum TapAction: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .spotify: "Открыть Spotify"
+        case .spotify: "Открыть плеер"
         case .player: "Открыть мини-плеер"
         case .settings: "Открыть настройки TrackPin"
         }
@@ -68,7 +68,15 @@ final class Preferences: ObservableObject {
     @Published var style: WidgetStyle {
         didSet { if let data = try? JSONEncoder().encode(style) { defaults.set(data, forKey: Key.style) } }
     }
-    /// Seconds between two reads of the Spotify state.
+    /// The player TrackPin follows.
+    @Published var sourceSelection: SourceSelection {
+        didSet { defaults.set(sourceSelection.rawValue, forKey: Key.sourceSelection) }
+    }
+    /// Automatic mode also looks for Yandex Music in browser tabs.
+    @Published var scansBrowser: Bool {
+        didSet { defaults.set(scansBrowser, forKey: Key.scansBrowser) }
+    }
+    /// Seconds between two reads of the player state.
     @Published var refreshInterval: Double {
         didSet { defaults.set(refreshInterval, forKey: Key.refreshInterval) }
     }
@@ -78,12 +86,12 @@ final class Preferences: ObservableObject {
     @Published var tapAction: TapAction {
         didSet { defaults.set(tapAction.rawValue, forKey: Key.tapAction) }
     }
-    /// The play button starts Spotify when it is not running.
+    /// The play button starts the player when it is not running.
     @Published var launchSpotifyOnPlay: Bool {
         didSet { defaults.set(launchSpotifyOnPlay, forKey: Key.launchSpotifyOnPlay) }
     }
     /// Seconds between two reads of a playing track while no TrackPin window is open. 0: only
-    /// when Spotify reports a change.
+    /// when the player reports a change.
     @Published var backgroundInterval: Double {
         didSet { defaults.set(backgroundInterval, forKey: Key.backgroundInterval) }
     }
@@ -133,6 +141,8 @@ final class Preferences: ObservableObject {
 
     private enum Key {
         static let style = "widgetStyle"
+        static let sourceSelection = "sourceSelection"
+        static let scansBrowser = "scansBrowser"
         static let refreshInterval = "refreshInterval"
         static let showMenuBarIcon = "showMenuBarIcon"
         static let tapAction = "tapAction"
@@ -164,6 +174,8 @@ final class Preferences: ObservableObject {
             if let showTime = defaults.object(forKey: "showTime") as? Bool { migrated.showTime = showTime }
             style = migrated
         }
+        sourceSelection = defaults.string(forKey: Key.sourceSelection).flatMap(SourceSelection.init(rawValue:)) ?? .automatic
+        scansBrowser = defaults.bool(forKey: Key.scansBrowser)
         let interval = defaults.double(forKey: Key.refreshInterval)
         refreshInterval = Self.refreshIntervals.contains(interval) ? interval : 1
         showMenuBarIcon = defaults.object(forKey: Key.showMenuBarIcon) as? Bool ?? true

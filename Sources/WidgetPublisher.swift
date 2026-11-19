@@ -19,7 +19,7 @@ final class WidgetPublisher: ObservableObject {
     var onCommand: CommandHandler?
 
     private var listener: NWListener?
-    /// The encoded snapshot, built lazily when the widget asks: the app reads Spotify far more
+    /// The encoded snapshot, built lazily when the widget asks: the app reads the player far more
     /// often than the widget reloads, and the snapshot carries the cover.
     private var encoded: Data?
     private var coverURL: URL?
@@ -92,7 +92,8 @@ final class WidgetPublisher: ObservableObject {
 
     // MARK: Publishing
 
-    func publish(_ playback: Playback, style: WidgetStyle) {
+    func publish(_ playback: Playback, style: WidgetStyle, source: MusicSource? = nil) {
+        let source = source ?? snapshot.source
         let url = playback.currentTrack?.artwork
         if coverURL != url {
             artworkTask?.cancel()
@@ -114,7 +115,8 @@ final class WidgetPublisher: ObservableObject {
             }
         }
 
-        let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: cover, palette: palette, style: style)
+        let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: cover, palette: palette, style: style,
+                                  source: source)
         encoded = nil
         let reload = needsReload(from: snapshot, to: next)
         snapshot = next
@@ -128,7 +130,8 @@ final class WidgetPublisher: ObservableObject {
     /// Reload only when something visible changed. A playing track advances on its own
     /// in the widget, so a regular position update does not need a reload.
     private func needsReload(from old: WidgetSnapshot, to new: WidgetSnapshot) -> Bool {
-        guard old.hostReachable, old.style == new.style, old.cover == new.cover, old.palette == new.palette else { return true }
+        guard old.hostReachable, old.style == new.style, old.cover == new.cover, old.palette == new.palette,
+              old.source == new.source else { return true }
         if let before = old.playback.currentTrack, let after = new.playback.currentTrack {
             let elapsed = before.playing ? new.sampledAt.timeIntervalSince(old.sampledAt) : 0
             return before.id != after.id || before.playing != after.playing || before.title != after.title

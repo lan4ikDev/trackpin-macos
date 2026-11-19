@@ -26,12 +26,12 @@ enum TrackPinError: Error, CustomLocalizedStringResourceConvertible {
 }
 
 /// Runs inside the widget extension when a widget button is pressed. The extension is
-/// sandboxed and cannot talk to Spotify itself, so it forwards the command to the
+/// sandboxed and cannot talk to the player itself, so it forwards the command to the
 /// TrackPin app, which executes it through AppleScript and answers with fresh state.
 /// WidgetKit reloads the widget timeline once `perform()` returns.
 struct PlayerControlIntent: AppIntent {
-    static var title: LocalizedStringResource = "Управлять Spotify"
-    static var description = IntentDescription("Пауза, переключение и перемотка треков Spotify через TrackPin.")
+    static var title: LocalizedStringResource = "Управлять плеером"
+    static var description = IntentDescription("Пауза, переключение и перемотка треков в Spotify, Apple Music или Яндекс Музыке через TrackPin.")
 
     @Parameter(title: "Действие")
     var action: PlayerAction

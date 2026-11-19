@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var player: Player
     @ObservedObject var publisher: WidgetPublisher
     @ObservedObject var history: PlayHistory
+    var updater: Updater?
     let showMiniPlayer: () -> Void
 
     var body: some View {
@@ -15,7 +16,7 @@ struct SettingsView: View {
                 .tabItem { Label("Виджет", systemImage: "rectangle.3.group") }
             MiniPlayerSettings(preferences: preferences, history: history, showMiniPlayer: showMiniPlayer)
                 .tabItem { Label("Мини-плеер", systemImage: "rectangle.portrait.on.rectangle.portrait") }
-            GeneralSettings(preferences: preferences, player: player)
+            GeneralSettings(preferences: preferences, player: player, updater: updater)
                 .tabItem { Label("Основные", systemImage: "gearshape") }
             HelpSettings(player: player, publisher: publisher)
                 .tabItem { Label("Доступ и помощь", systemImage: "questionmark.circle") }
@@ -83,6 +84,23 @@ private struct OpacitySlider: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 40, alignment: .trailing)
             }
+        }
+    }
+}
+
+private struct UpdateSection: View {
+    @ObservedObject var updater: Updater
+
+    var body: some View {
+        Section {
+            Toggle("Проверять обновления автоматически", isOn: Binding(
+                get: { updater.automaticallyChecks },
+                set: { updater.automaticallyChecks = $0 }))
+            Button("Проверить обновления…") { updater.checkForUpdates() }
+        } header: {
+            Text("Обновления")
+        } footer: {
+            Text("Новые версии выходят на странице github.com/lan4ikDev/trackpin-macos/releases. TrackPin проверяет подпись обновления перед установкой.")
         }
     }
 }
@@ -403,6 +421,7 @@ extension RGB {
 private struct GeneralSettings: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var player: Player
+    let updater: Updater?
     @State private var loginEnabled = LoginItem.enabled
     @State private var loginError: String?
 
@@ -431,6 +450,9 @@ private struct GeneralSettings: View {
                 }
             } footer: {
                 Text("Язык применится после перезапуска TrackPin. Виджет на рабочем столе говорит на языке системы.")
+            }
+            if let updater {
+                UpdateSection(updater: updater)
             }
             Section("Запуск") {
                 Toggle("Открывать TrackPin при входе в систему", isOn: Binding(

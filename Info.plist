@@ -19,6 +19,8 @@
     </dict></array>
     <key>CFBundleIconFile</key><string>TrackPin</string>
     <key>LSUIElement</key><true/>
+    <key>SUFeedURL</key><string>https://raw.githubusercontent.com/lan4ikDev/trackpin-macos/main/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>aClnmRAFzfF35O4xEyvum0Da89H29DLizK/ffYT09Xk=</string>
     <key>NSAppleEventsUsageDescription</key><string>TrackPin управляет воспроизведением и показывает текущий трек Spotify, Apple Music и Яндекс Музыки в браузере.</string>
 </dict>
 </plist>

@@ -96,7 +96,7 @@ final class Player: NSObject, ObservableObject {
         backends = Dictionary(uniqueKeysWithValues: all.map { ($0.source, $0) })
         super.init()
         if demo {
-            playback = .track(Track(id: "demo", title: "After Hours", artist: "Демонстрация",
+            playback = .track(Track(id: "demo", title: "Midnight Drive", artist: "TrackPin",
                                     artwork: nil, duration: 228, position: 72, playing: true,
                                     volume: 70, shuffling: false, repeating: false))
         }

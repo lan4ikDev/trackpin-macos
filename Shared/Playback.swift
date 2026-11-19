@@ -83,7 +83,7 @@ struct WidgetSnapshot: Codable, Equatable {
 
     static var preview: WidgetSnapshot {
         WidgetSnapshot(
-            playback: .track(Track(id: "preview", title: "After Hours", artist: "TrackPin",
+            playback: .track(Track(id: "preview", title: "Midnight Drive", artist: "TrackPin",
                                    artwork: nil, duration: 228, position: 74, playing: true)),
             sampledAt: .now, cover: nil,
             palette: ArtworkPalette(top: RGB(r: 0.36, g: 0.20, b: 0.42), bottom: RGB(r: 0.12, g: 0.08, b: 0.20),

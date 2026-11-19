@@ -164,6 +164,18 @@ final class WidgetPublisher: ObservableObject {
     }
 
     /// Reloads right away, for an explicit request such as the "Update widgets" button.
+    /// Shows `data` as the current cover, for screenshots of the demo track.
+    func usePreviewCover(_ data: Data) {
+        cover = data
+        coverImage = NSImage(data: data)
+        blurredCover = Artwork.blurred(data)
+        if let image = coverImage?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            palette = Artwork.palette(of: image)
+        }
+        snapshot.cover = data
+        snapshot.palette = palette
+    }
+
     func reloadWidgets() {
         pendingReload?.cancel()
         pendingReload = nil

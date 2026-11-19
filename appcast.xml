@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>TrackPin</title>
+    <link>https://raw.githubusercontent.com/lan4ikDev/trackpin-macos/main/appcast.xml</link>
+    <item>
+      <title>TrackPin 3.4</title>
+      <pubDate>Thu, 19 Nov 2026 17:59:06 GMT</pubDate>
+      <sparkle:version>9</sparkle:version>
+      <sparkle:shortVersionString>3.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/v3.4</link>
+      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/v3.4/TrackPin-3.4.dmg" type="application/octet-stream" sparkle:edSignature="a1jtUTqq0mqXgGPEKZbw64STPDYI0O5IIR6RsLv/g+K579LKfro+fvtrfnZ5zMvtbIYxt0nInY7z86WEIX+rBQ==" length="3988105" />
+    </item>
+  </channel>
+</rss>

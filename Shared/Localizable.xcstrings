@@ -1713,6 +1713,22 @@
         }
       }
     },
+    "Новые версии выходят на странице github.com/lan4ikDev/trackpin-macos/releases. TrackPin проверяет подпись обновления перед установкой.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New versions are published at github.com/lan4ikDev/trackpin-macos/releases. TrackPin checks the update’s signature before installing it."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новые версии выходят на странице github.com/lan4ikDev/trackpin-macos/releases. TrackPin проверяет подпись обновления перед установкой."
+          }
+        }
+      }
+    },
     "Нужен «Универсальный доступ» для TrackPin: Яндекс Музыка не даёт другим приложениям данных о треке, поэтому TrackPin читает её окно, как VoiceOver. После каждой новой сборки TrackPin доступ может понадобиться выдать заново.": {
       "localizations": {
         "en": {
@@ -1821,6 +1837,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Обновить виджеты"
+          }
+        }
+      }
+    },
+    "Обновления": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updates"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обновления"
           }
         }
       }
@@ -2673,6 +2705,22 @@
         }
       }
     },
+    "Проверить обновления…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for Updates…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверить обновления…"
+          }
+        }
+      }
+    },
     "Проверь, что плеер запущен.": {
       "localizations": {
         "en": {
@@ -2685,6 +2733,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Проверь, что плеер запущен."
+          }
+        }
+      }
+    },
+    "Проверять обновления автоматически": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for updates automatically"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверять обновления автоматически"
           }
         }
       }

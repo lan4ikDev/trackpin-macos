@@ -37,16 +37,68 @@ enum MiniPlayerRender {
         let player = Player(demo: true)
         let sleep = SleepTimer(player: player)
         if CommandLine.arguments.contains("--sleep") { sleep.start(.minutes(30)) }
-        let view = MiniPlayerView(player: player, preferences: Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard),
-                                  publisher: WidgetPublisher(), history: PlayHistory(fileURL: nil), model: model,
+        let publisher = WidgetPublisher()
+        publisher.usePreviewCover(demoCover())
+        let preferences = Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard)
+        preferences.popupShowsLyrics = CommandLine.arguments.contains("--lyrics")
+        let view = MiniPlayerView(player: player, preferences: preferences,
+                                  publisher: publisher, history: PlayHistory(fileURL: nil), model: model,
                                   sleepTimer: sleep, lyrics: LyricsStore(), close: {}, showSettings: {})
-            .background(Color(white: 0.85))
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        guard let image = renderer.cgImage else { return }
-        let rep = NSBitmapImageRep(cgImage: image)
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+            .background(wallpaper)
+        drawWithAppKit(view, to: url)
         writeWidgets(next: url)
+    }
+
+    /// Draws `view` through a real (off screen) window, so AppKit backed controls such as
+    /// progress bars render as they do on screen, at 2x.
+    private static func drawWithAppKit<V: View>(_ view: V, to url: URL) {
+        _ = NSApplication.shared
+        let hosting = NSHostingView(rootView: view.environment(\.controlActiveState, .key))
+        let size = hosting.fittingSize
+        let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hosting
+        window.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        hosting.layoutSubtreeIfNeeded()
+        let pixels = NSSize(width: size.width * 2, height: size.height * 2)
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(pixels.width), pixelsHigh: Int(pixels.height),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return }
+        rep.size = size
+        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        window.orderOut(nil)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+
+    private static var wallpaper: some View {
+        LinearGradient(colors: [Color(red: 0.29, green: 0.42, blue: 0.62), Color(red: 0.58, green: 0.45, blue: 0.62),
+                                Color(red: 0.86, green: 0.6, blue: 0.52)],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+
+    /// An abstract cover for screenshots, so they show no real album art.
+    static func demoCover() -> Data {
+        let side = 600
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            let gradient = NSGradient(colors: [NSColor(srgbRed: 0.98, green: 0.45, blue: 0.38, alpha: 1),
+                                               NSColor(srgbRed: 0.55, green: 0.22, blue: 0.62, alpha: 1),
+                                               NSColor(srgbRed: 0.12, green: 0.14, blue: 0.38, alpha: 1)])
+            gradient?.draw(in: rect, angle: -60)
+            let center = NSPoint(x: rect.midX, y: rect.midY * 0.92)
+            for (index, radius) in [250.0, 195, 140, 85].enumerated() {
+                let ring = NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+                NSColor.white.withAlphaComponent(0.10 + Double(index) * 0.05).setStroke()
+                ring.lineWidth = 3
+                ring.stroke()
+            }
+            NSColor(srgbRed: 1, green: 0.85, blue: 0.55, alpha: 0.95).setFill()
+            NSBezierPath(ovalIn: NSRect(x: center.x - 44, y: center.y - 44, width: 88, height: 88)).fill()
+            return true
+        }
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+              let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else { return Data() }
+        return jpeg
     }
 
     /// Every settings tab, drawn by AppKit into PNGs (`<path>-<tab>.png`), so real controls
@@ -55,8 +107,12 @@ enum MiniPlayerRender {
         _ = NSApplication.shared
         let preferences = Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard)
         let player = Player(demo: true)
-        let view = SettingsView(preferences: preferences, player: player, publisher: WidgetPublisher(),
+        let publisher = WidgetPublisher()
+        publisher.usePreviewCover(demoCover())
+        player.objectWillChange.send()
+        let view = SettingsView(preferences: preferences, player: player, publisher: publisher,
                                 history: PlayHistory(fileURL: nil), showMiniPlayer: {})
+            .environment(\.controlActiveState, .key)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                               styleMask: [.titled], backing: .buffered, defer: false)
         let hosting = NSHostingView(rootView: view)
@@ -90,19 +146,26 @@ enum MiniPlayerRender {
             track.volume = 64
             snapshot.playback = .track(track)
         }
-        var style = WidgetStyle()
-        style.opacity = 0.8
-        let view = VStack(spacing: 20) {
-            TrackPinCard(snapshot: snapshot, style: style, size: .medium, inWidget: false)
+        let publisher = WidgetPublisher()
+        publisher.usePreviewCover(demoCover())
+        snapshot.cover = publisher.snapshot.cover
+        snapshot.palette = publisher.snapshot.palette
+        let style = WidgetStyle()
+        var ocean = style
+        ocean.theme = .ocean
+        let view = HStack(alignment: .top, spacing: 24) {
+            VStack(spacing: 24) {
+                TrackPinCard(snapshot: snapshot, style: style, size: .medium, inWidget: false)
+                HStack(spacing: 24) {
+                    TrackPinCard(snapshot: snapshot, style: ocean, size: .small, inWidget: false)
+                    TrackPinCard(snapshot: snapshot, style: style, size: .small, inWidget: false)
+                }
+            }
             TrackPinCard(snapshot: snapshot, style: style, size: .large, inWidget: false)
         }
-        .padding(20)
-        .background(Color(red: 0.3, green: 0.45, blue: 0.6))
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        guard let image = renderer.cgImage else { return }
-        let target = url.deletingPathExtension().appendingPathExtension("widgets.png")
-        try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: target)
+        .padding(32)
+        .background(wallpaper)
+        drawWithAppKit(view, to: url.deletingPathExtension().appendingPathExtension("widgets.png"))
     }
 }
 
@@ -175,6 +238,7 @@ enum SelfTest {
 @MainActor
 private final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
+    private let updater = Updater()
     private lazy var player = Player(demo: CommandLine.arguments.contains("--demo"))
     private let publisher = WidgetPublisher()
     private let history = PlayHistory(fileURL: CommandLine.arguments.contains("--demo") ? nil : PlayHistory.defaultURL)
@@ -402,6 +466,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             sleepMenuItem = sleep
             add(String(localized: "Открыть плеер"), #selector(openPlayer), to: menu)
             add(String(localized: "Обновить виджеты"), #selector(reloadWidgets), to: menu)
+            add(String(localized: "Проверить обновления…"), #selector(checkForUpdates), to: menu)
             menu.addItem(.separator())
             menu.addItem(withTitle: String(localized: "Выйти из TrackPin"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
             statusMenu = menu
@@ -474,6 +539,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openPlayer() { player.openPlayer() }
     @objc private func reloadWidgets() { publisher.reloadWidgets() }
+    @objc private func checkForUpdates() { updater.checkForUpdates() }
     @objc private func showMiniPlayer() { miniPlayer.show() }
 
     // MARK: Windows
@@ -481,7 +547,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         if settingsWindow == nil {
             let view = SettingsView(preferences: preferences, player: player, publisher: publisher, history: history,
-                                    showMiniPlayer: { [weak self] in self?.miniPlayer.show() })
+                                    updater: updater, showMiniPlayer: { [weak self] in self?.miniPlayer.show() })
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             window.title = String(localized: "Настройки TrackPin")

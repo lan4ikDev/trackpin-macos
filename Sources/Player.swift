@@ -266,8 +266,10 @@ final class Player: NSObject, ObservableObject {
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                // A command or a fixed choice made meanwhile wins over this read.
-                let stillValid = self.source == active.source || self.selection == .automatic
+                // When the source changed meanwhile (a choice in the settings, or another player
+                // started), this read is stale: drop it and read the new source.
+                let stillValid = self.source == active.source
+                if !stillValid { self.again = true }
                 if self.pending.isEmpty, stillValid { self.update(result, from: origin) }
                 self.busy = false
                 next?.completion?(result)

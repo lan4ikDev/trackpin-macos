@@ -51,12 +51,12 @@ final class YandexAppBridge: PlayerBackend {
             enabledPID = pid
             bar = nil
         }
-        if let command, let scan = scan(root: root, pid: pid) {
-            perform(command, on: scan)
+        if let command, let before = self.scan(root: root, pid: pid) {
+            perform(command, on: before)
             usleep(350_000)
         }
-        guard let scan = scan(root: root, pid: pid) else { return .unavailable }
-        return scan.playback
+        guard let after = self.scan(root: root, pid: pid) else { return .unavailable }
+        return after.playback
     }
 
     // MARK: Scanning
@@ -141,13 +141,13 @@ final class YandexAppBridge: PlayerBackend {
     /// Finds the player bar: the bottom-most play or pause button and what sits next to it.
     /// The subtree that holds them is remembered, so later reads skip the rest of the window.
     private func scan(root: AXUIElement, pid: pid_t) -> Scan? {
-        if let bar, barPID == pid, let scan = scan(from: bar, cacheBar: false) { return scan }
+        if let bar, barPID == pid, let found = self.scan(from: bar, cacheBar: false) { return found }
         bar = nil
         let windows = Self.attribute(root, kAXWindowsAttribute) as? [AXUIElement] ?? []
         for window in windows {
-            if let scan = scan(from: window, cacheBar: true) {
+            if let found = self.scan(from: window, cacheBar: true) {
                 barPID = pid
-                return scan
+                return found
             }
         }
         return nil

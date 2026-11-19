@@ -121,6 +121,10 @@ final class Preferences: ObservableObject {
     @Published var popupShowsModes: Bool {
         didSet { defaults.set(popupShowsModes, forKey: Key.popupShowsModes) }
     }
+    /// Synced lyrics from lrclib.net under the controls of the mini player.
+    @Published var popupShowsLyrics: Bool {
+        didSet { defaults.set(popupShowsLyrics, forKey: Key.popupShowsLyrics) }
+    }
     @Published var popupCoverShape: ArtworkShape {
         didSet { defaults.set(popupCoverShape.rawValue, forKey: Key.popupCoverShape) }
     }
@@ -151,6 +155,7 @@ final class Preferences: ObservableObject {
         static let popupShowsVolume = "popupShowsVolume"
         static let popupShowsModes = "popupShowsModes"
         static let popupCoverShape = "popupCoverShape"
+        static let popupShowsLyrics = "popupShowsLyrics"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -183,6 +188,7 @@ final class Preferences: ObservableObject {
         popupClosesOnClickOutside = defaults.object(forKey: Key.popupClosesOnClickOutside) as? Bool ?? true
         popupShowsVolume = defaults.object(forKey: Key.popupShowsVolume) as? Bool ?? true
         popupShowsModes = defaults.object(forKey: Key.popupShowsModes) as? Bool ?? true
+        popupShowsLyrics = defaults.object(forKey: Key.popupShowsLyrics) as? Bool ?? true
         popupCoverShape = defaults.string(forKey: Key.popupCoverShape).flatMap(ArtworkShape.init(rawValue:)) ?? .rounded
     }
 

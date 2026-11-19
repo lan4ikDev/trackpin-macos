@@ -32,6 +32,10 @@ progress, and has playback buttons that work right on the desktop.
 - **Sleep timer**: pause after 15–90 minutes (the volume fades out first) or at the end of the
   track, from the mini player's moon button or the menu bar menu.
 - **Track change notification** with the cover, off in the settings if you don't want it.
+- **Lyrics** in the mini player: synced lyrics from [LRCLIB](https://lrclib.net) (free, no
+  account) scroll along with the track, the current line is highlighted and a click on a line
+  seeks to it. Falls back to plain text when there are no timestamps. Lyrics are cached in
+  `~/Library/Caches`; the quote button in the mini player or the settings turn them off.
 - **Menu bar**: optional track title next to the icon, right click for the menu.
 
 ## How it works

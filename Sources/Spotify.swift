@@ -4,8 +4,11 @@ enum PlayerCommand: Equatable {
     case previous, toggle, pause, next, skip(Int), seek(Double, String)
     case volume(Int), shuffle(Bool), repeating(Bool)
 
-    init(_ action: PlayerAction, step: Int) {
+    /// `volume` is the current volume, used by the relative volume actions.
+    init(_ action: PlayerAction, step: Int, volume: Int? = nil) {
         switch action {
+        case .volumeUp: self = .volume(min(100, (volume ?? 50) + step))
+        case .volumeDown: self = .volume(max(0, (volume ?? 50) - step))
         case .toggle: self = .toggle
         case .next: self = .next
         case .previous: self = .previous

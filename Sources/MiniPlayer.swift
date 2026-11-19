@@ -224,7 +224,7 @@ struct MiniPlayerView: View {
     var body: some View {
         card
             .frame(width: width)
-            .background { background }
+            .background { background.opacity(preferences.popupOpacity) }
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: corner, style: .continuous)
@@ -376,9 +376,12 @@ private struct TrackCard: View {
         ZStack {
             Color.white.opacity(0.08)
             if let image = publisher.coverImage {
+                // Cross-fade from the old cover to the new one with a little zoom and blur.
                 Image(nsImage: image).resizable().scaledToFill()
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                    .id(track.artwork)
+                    .id(ObjectIdentifier(image))
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 1.08)),
+                        removal: .opacity.combined(with: .scale(scale: 0.94))))
             } else {
                 Image(systemName: "music.note")
                     .font(.system(size: coverSide * 0.28, weight: .semibold))
@@ -399,7 +402,7 @@ private struct TrackCard: View {
         .scaleEffect(track.playing || preferences.popupCoverShape == .circle ? 1 : 0.92)
         .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
         .animation(.spring(response: 0.45, dampingFraction: 0.75), value: track.playing)
-        .animation(.easeInOut(duration: 0.35), value: publisher.coverImage)
+        .animation(.easeInOut(duration: 0.45), value: publisher.coverImage)
         .overlay(alignment: .top) {
             HStack(spacing: 6) {
                 CircleButton(icon: "gearshape.fill", label: "Настройки", action: showSettings)
@@ -478,7 +481,10 @@ private struct TrackCard: View {
                 }
             }
             .id(track.id)
-            .transition(.opacity)
+            // The new title slides in from the right while the old one leaves to the left.
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)))
             Spacer(minLength: 0)
             if preferences.popupVisualizer == .compact {
                 Equalizer(bars: 4, active: animating, color: accent)
@@ -528,7 +534,8 @@ private struct TrackCard: View {
                 .accessibilityLabel("Скопировать ссылку на трек")
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: track.id)
+        .clipped()
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: track.id)
     }
 
     private var controls: some View {

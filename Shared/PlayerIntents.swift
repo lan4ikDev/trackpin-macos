@@ -3,7 +3,7 @@ import Foundation
 
 /// Playback command sent from a widget button (or Shortcuts) to the host app.
 enum PlayerAction: String, AppEnum {
-    case toggle, next, previous, rewind, forward
+    case toggle, next, previous, rewind, forward, volumeUp, volumeDown
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Действие"
     static var caseDisplayRepresentations: [PlayerAction: DisplayRepresentation] = [
@@ -11,7 +11,9 @@ enum PlayerAction: String, AppEnum {
         .next: "Следующий трек",
         .previous: "Предыдущий трек",
         .rewind: "Перемотать назад",
-        .forward: "Перемотать вперёд"
+        .forward: "Перемотать вперёд",
+        .volumeUp: "Громче",
+        .volumeDown: "Тише"
     ]
 }
 

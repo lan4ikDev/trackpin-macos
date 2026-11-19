@@ -26,6 +26,8 @@ final class WidgetPublisher: ObservableObject {
     private var cover: Data?
     private var palette: ArtworkPalette?
     private var artworkTask: Task<Void, Never>?
+    /// A new cover is loading; the widget reload waits for it (at most two seconds).
+    private var waitingForCover = false
 
     init() {
         let params = NWParameters.tcp
@@ -98,14 +100,28 @@ final class WidgetPublisher: ObservableObject {
         if coverURL != url {
             artworkTask?.cancel()
             coverURL = url
-            cover = nil
-            palette = nil
-            coverImage = nil
-            blurredCover = nil
+            // Keep the previous cover until the new one has loaded, so the mini player can
+            // cross-fade between them and the widget reloads once with the new track and cover.
+            if url == nil {
+                cover = nil
+                palette = nil
+                coverImage = nil
+                blurredCover = nil
+                waitingForCover = false
+            }
             if let url {
+                waitingForCover = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    // The cover is slow or failed: show the new track without it.
+                    guard let self, self.waitingForCover, self.coverURL == url else { return }
+                    self.waitingForCover = false
+                    self.cover = nil
+                    self.publish(self.snapshot.playback, style: self.snapshot.style)
+                }
                 artworkTask = Task { @MainActor [weak self] in
                     let artwork = await Artwork.load(url)
                     guard !Task.isCancelled, let self, self.coverURL == url else { return }
+                    self.waitingForCover = false
                     self.cover = artwork?.data
                     self.palette = artwork?.palette
                     self.coverImage = artwork.flatMap { NSImage(data: $0.data) }
@@ -120,7 +136,7 @@ final class WidgetPublisher: ObservableObject {
         encoded = nil
         let reload = needsReload(from: snapshot, to: next)
         snapshot = next
-        if reload { reloadWidgets() }
+        if reload && !waitingForCover { reloadWidgets() }
     }
 
     func reloadWidgets() {
@@ -135,6 +151,7 @@ final class WidgetPublisher: ObservableObject {
         if let before = old.playback.currentTrack, let after = new.playback.currentTrack {
             let elapsed = before.playing ? new.sampledAt.timeIntervalSince(old.sampledAt) : 0
             return before.id != after.id || before.playing != after.playing || before.title != after.title
+                || before.volume != after.volume
                 || abs(min(before.duration, before.position + elapsed) - after.position) > 3
         }
         return old.playback != new.playback

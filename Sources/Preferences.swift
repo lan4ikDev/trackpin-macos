@@ -130,6 +130,10 @@ final class Preferences: ObservableObject {
     @Published var popupPlacement: PopupPlacement {
         didSet { defaults.set(popupPlacement.rawValue, forKey: Key.popupPlacement) }
     }
+    /// Opacity of the mini player's background, 0.3 to 1.
+    @Published var popupOpacity: Double {
+        didSet { defaults.set(popupOpacity, forKey: Key.popupOpacity) }
+    }
     @Published var popupAnimated: Bool {
         didSet { defaults.set(popupAnimated, forKey: Key.popupAnimated) }
     }
@@ -185,6 +189,7 @@ final class Preferences: ObservableObject {
         static let popupBackground = "popupBackground"
         static let popupPlacement = "popupPlacement"
         static let popupAnimated = "popupAnimated"
+        static let popupOpacity = "popupOpacity"
         static let popupClosesOnClickOutside = "popupClosesOnClickOutside"
         static let popupShowsVolume = "popupShowsVolume"
         static let popupShowsModes = "popupShowsModes"
@@ -224,6 +229,7 @@ final class Preferences: ObservableObject {
         popupBackground = defaults.string(forKey: Key.popupBackground).flatMap(PopupBackground.init(rawValue:)) ?? .artwork
         popupPlacement = defaults.string(forKey: Key.popupPlacement).flatMap(PopupPlacement.init(rawValue:)) ?? .cursor
         popupAnimated = defaults.object(forKey: Key.popupAnimated) as? Bool ?? true
+        popupOpacity = min(max(defaults.object(forKey: Key.popupOpacity) as? Double ?? 1, 0.3), 1)
         popupClosesOnClickOutside = defaults.object(forKey: Key.popupClosesOnClickOutside) as? Bool ?? true
         popupShowsVolume = defaults.object(forKey: Key.popupShowsVolume) as? Bool ?? true
         popupShowsModes = defaults.object(forKey: Key.popupShowsModes) as? Bool ?? true

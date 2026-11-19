@@ -41,6 +41,29 @@ enum MiniPlayerRender {
         guard let image = renderer.cgImage else { return }
         let rep = NSBitmapImageRep(cgImage: image)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
+        writeWidgets(next: url)
+    }
+
+    /// The medium and large widget faces with a demo track, next to the mini player image.
+    private static func writeWidgets(next url: URL) {
+        var snapshot = WidgetSnapshot.preview
+        if case var .track(track) = snapshot.playback {
+            track.volume = 64
+            snapshot.playback = .track(track)
+        }
+        var style = WidgetStyle()
+        style.opacity = 0.8
+        let view = VStack(spacing: 20) {
+            TrackPinCard(snapshot: snapshot, style: style, size: .medium, inWidget: false)
+            TrackPinCard(snapshot: snapshot, style: style, size: .large, inWidget: false)
+        }
+        .padding(20)
+        .background(Color(red: 0.3, green: 0.45, blue: 0.6))
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.cgImage else { return }
+        let target = url.deletingPathExtension().appendingPathExtension("widgets.png")
+        try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: target)
     }
 }
 
@@ -252,7 +275,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             done()
             return
         }
-        player.send(PlayerCommand(action, step: step)) { [weak self] playback in
+        let volume = player.playback.currentTrack?.volume
+        player.send(PlayerCommand(action, step: step, volume: volume)) { [weak self] playback in
             guard let self else { done(); return }
             // Publish right away so the reply and the widget reload already show the new state.
             self.publisher.publish(playback, style: self.preferences.style, source: self.player.source)

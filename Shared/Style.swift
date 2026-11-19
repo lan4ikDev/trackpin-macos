@@ -43,6 +43,14 @@ struct WidgetStyle: Codable, Equatable {
     var showTime = true
     /// Colors of the "custom" theme, made in the theme editor.
     var customTheme: CustomTheme = .default
+    /// Opacity of the widget background, 0.2 to 1. Text and buttons stay opaque.
+    var opacity: Double = 1
+    /// Volume buttons on the medium and large widget.
+    var showVolume = true
+    /// Rewind and fast forward buttons around the progress bar on the medium and large widget.
+    var seekAroundProgress = true
+
+    static let opacityRange = 0.2...1.0
 
     static let seekSteps = [5, 10, 15, 30]
 
@@ -61,6 +69,9 @@ struct WidgetStyle: Codable, Equatable {
         showProgress = (try? c.decode(Bool.self, forKey: .showProgress)) ?? fallback.showProgress
         showTime = (try? c.decode(Bool.self, forKey: .showTime)) ?? fallback.showTime
         customTheme = (try? c.decode(CustomTheme.self, forKey: .customTheme)) ?? fallback.customTheme
+        opacity = (try? c.decode(Double.self, forKey: .opacity)).map { min(max($0, Self.opacityRange.lowerBound), 1) } ?? fallback.opacity
+        showVolume = (try? c.decode(Bool.self, forKey: .showVolume)) ?? fallback.showVolume
+        seekAroundProgress = (try? c.decode(Bool.self, forKey: .seekAroundProgress)) ?? fallback.seekAroundProgress
         if !Self.seekSteps.contains(seekStep) { seekStep = fallback.seekStep }
     }
 

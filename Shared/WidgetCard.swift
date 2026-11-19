@@ -104,7 +104,7 @@ struct TrackPinCard: View {
                 controls(track, scale: 1)
             }
             Spacer(minLength: 0)
-            if style.showProgress { progress(track, showTime: style.showTime) }
+            if style.showProgress { progressRow(track, showTime: style.showTime) }
         }
     }
 
@@ -115,8 +115,15 @@ struct TrackPinCard: View {
             cover(style.showHeader ? 168 : 186).frame(maxWidth: .infinity)
             Spacer(minLength: 0)
             info(track, titleSize: 17, artistSize: 13)
-            if style.showProgress { progress(track, showTime: style.showTime) }
-            controls(track, scale: 1.25).frame(maxWidth: .infinity)
+            if style.showProgress { progressRow(track, showTime: style.showTime) }
+            HStack(spacing: 0) {
+                // Without the header the volume buttons move to the ends of the button row.
+                if showsVolume(track) && !style.showHeader { smallButton(.volumeDown, track, scale: 1.1) }
+                Spacer(minLength: 0)
+                controls(track, scale: 1.25)
+                Spacer(minLength: 0)
+                if showsVolume(track) && !style.showHeader { smallButton(.volumeUp, track, scale: 1.1) }
+            }
         }
     }
 
@@ -168,15 +175,31 @@ struct TrackPinCard: View {
             Text(snapshot.sourceTitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(colors.accent)
                 .widgetAccentable()
             Spacer(minLength: 0)
-            if let track = snapshot.playback.currentTrack, track.playing {
-                Image(systemName: "speaker.wave.2.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(colors.secondary)
+            if let track = snapshot.playback.currentTrack {
+                if showsVolume(track), size != .small, let volume = track.volume {
+                    HStack(spacing: 2) {
+                        smallButton(.volumeDown, track, scale: 0.8)
+                        Text("\(volume)%")
+                            .font(.system(size: 9, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(colors.secondary)
+                            .contentTransition(.numericText(value: Double(volume)))
+                            .frame(minWidth: 28)
+                        smallButton(.volumeUp, track, scale: 0.8)
+                    }
+                } else if track.playing {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(colors.secondary)
+                }
             }
         }
     }
 
-    @ViewBuilder private var background: some View {
+    private var background: some View {
+        backgroundFill.opacity(style.opacity)
+    }
+
+    @ViewBuilder private var backgroundFill: some View {
         if colors.artworkBackground, let image = coverImage {
             ZStack {
                 colors.gradient
@@ -220,6 +243,10 @@ struct TrackPinCard: View {
         }
         .frame(width: side, height: side)
         .clipShape(artworkClip(side))
+        // A new track slides its cover in instead of switching abruptly.
+        .id(snapshot.playback.currentTrack?.id)
+        .transition(.asymmetric(insertion: .scale(scale: 0.85).combined(with: .opacity),
+                                removal: .opacity))
         .shadow(color: .black.opacity(colors.dark ? 0.25 : 0.12), radius: side * 0.06, y: side * 0.02)
         .accessibilityHidden(true)
     }
@@ -233,11 +260,47 @@ struct TrackPinCard: View {
     }
 
     private func info(_ track: Track, titleSize: CGFloat, artistSize: CGFloat) -> some View {
+        infoText(track, titleSize: titleSize, artistSize: artistSize)
+            .id(track.id)
+            .transition(.push(from: .bottom))
+    }
+
+    private func infoText(_ track: Track, titleSize: CGFloat, artistSize: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(track.title).font(.system(size: titleSize, weight: .semibold)).lineLimit(1)
             if style.showArtist {
                 Text(track.artist).font(.system(size: artistSize)).foregroundStyle(colors.secondary).lineLimit(1)
             }
+        }
+    }
+
+    private func showsVolume(_ track: Track) -> Bool {
+        style.showVolume && track.volume != nil && size != .small
+    }
+
+    private func smallButton(_ action: PlayerAction, _ track: Track, scale: CGFloat) -> some View {
+        Button(intent: PlayerControlIntent(action: action, step: 10)) {
+            Image(systemName: symbol(action, playing: track.playing))
+                .font(.system(size: 11 * scale, weight: .semibold))
+                .frame(width: 22 * scale, height: 22 * scale)
+                .foregroundStyle(colors.primary.opacity(0.8))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label(action, playing: track.playing))
+    }
+
+    /// The progress bar, with rewind and fast forward around it when the main buttons
+    /// only switch tracks.
+    @ViewBuilder private func progressRow(_ track: Track, showTime: Bool) -> some View {
+        if style.seekAroundProgress && style.controls == .tracks {
+            HStack(alignment: showTime ? .top : .center, spacing: 6) {
+                smallButton(.rewind, track, scale: 1).offset(y: showTime ? -7 : 0)
+                progress(track, showTime: showTime)
+                smallButton(.forward, track, scale: 1).offset(y: showTime ? -7 : 0)
+            }
+        } else {
+            progress(track, showTime: showTime)
         }
     }
 
@@ -287,6 +350,8 @@ struct TrackPinCard: View {
         case .next: "forward.end.fill"
         case .rewind: "gobackward.\(style.seekStep)"
         case .forward: "goforward.\(style.seekStep)"
+        case .volumeUp: "speaker.plus.fill"
+        case .volumeDown: "speaker.minus.fill"
         }
     }
 
@@ -297,6 +362,8 @@ struct TrackPinCard: View {
         case .next: "Следующий трек"
         case .rewind: "Назад на \(style.seekStep) секунд"
         case .forward: "Вперёд на \(style.seekStep) секунд"
+        case .volumeUp: "Громче"
+        case .volumeDown: "Тише"
         }
     }
 

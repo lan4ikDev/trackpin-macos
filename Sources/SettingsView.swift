@@ -21,6 +21,44 @@ struct SettingsView: View {
                 .tabItem { Label("Доступ и помощь", systemImage: "questionmark.circle") }
         }
         .frame(width: 820, height: 600)
+        .toggleStyle(SettingsSwitchStyle())
+    }
+}
+
+/// A switch that always keeps its natural size. In the narrow grouped forms a long label
+/// could squeeze the native switch until its knob disappeared.
+private struct SettingsSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            configuration.label
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            Toggle("", isOn: configuration.$isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .fixedSize()
+        }
+    }
+}
+
+/// A labelled slider for an opacity between `range` and 1, shown in percent.
+private struct OpacitySlider: View {
+    let title: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 10) {
+                Slider(value: $value, in: range, step: 0.05)
+                    .frame(minWidth: 140)
+                Text("\(Int((value * 100).rounded()))%")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
     }
 }
 
@@ -46,6 +84,7 @@ private struct MiniPlayerSettings: View {
                     ForEach(PopupSize.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                OpacitySlider(title: "Непрозрачность фона", value: $preferences.popupOpacity, range: 0.3...1)
                 Picker("Фон", selection: $preferences.popupBackground) {
                     ForEach(PopupBackground.allCases) { Text($0.title).tag($0) }
                 }
@@ -123,6 +162,8 @@ private struct AppearanceSettings: View {
                     Toggle("Полоса прогресса", isOn: $preferences.style.showProgress)
                     Toggle("Время трека", isOn: $preferences.style.showTime)
                         .disabled(!preferences.style.showProgress)
+                    OpacitySlider(title: "Непрозрачность фона", value: $preferences.style.opacity,
+                                  range: WidgetStyle.opacityRange)
                 }
                 Section("Кнопки") {
                     Picker("Набор", selection: $preferences.style.controls) {
@@ -134,7 +175,10 @@ private struct AppearanceSettings: View {
                         ForEach(WidgetStyle.seekSteps, id: \.self) { Text("\($0) с").tag($0) }
                     }
                     .pickerStyle(.segmented)
-                    Text("На маленьком виджете вместо пяти кнопок показываются три.")
+                    Toggle("Кнопки громкости", isOn: $preferences.style.showVolume)
+                    Toggle("Перемотка по краям полосы прогресса", isOn: $preferences.style.seekAroundProgress)
+                        .disabled(preferences.style.controls != .tracks)
+                    Text("На маленьком виджете вместо пяти кнопок показываются три, а громкости нет. На среднем кнопки громкости стоят в заголовке.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section {

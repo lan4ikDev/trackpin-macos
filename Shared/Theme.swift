@@ -39,9 +39,10 @@ struct CustomTheme: Codable, Equatable {
     static let format = "trackpin-theme"
 
     static let `default` = CustomTheme(name: "Моя тема",
-                                       top: RGB(r: 0.16, g: 0.20, b: 0.32),
-                                       bottom: RGB(r: 0.06, g: 0.07, b: 0.14),
-                                       accent: RGB(r: 1, g: 0.55, b: 0.42))
+                                       // Hex values, so the theme survives a round trip through a theme file unchanged.
+                                       top: RGB(hex: "#293352")!,
+                                       bottom: RGB(hex: "#0F1224")!,
+                                       accent: RGB(hex: "#FF8C6B")!)
 
     /// Light text on a dark background, or dark text on a light one, picked from the background.
     var dark: Bool { (top.luminance + bottom.luminance) / 2 < 0.55 }

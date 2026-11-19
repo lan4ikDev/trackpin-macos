@@ -42,7 +42,7 @@ final class PlayHistory: ObservableObject {
         }
     }
 
-    static var defaultURL: URL? {
+    nonisolated static var defaultURL: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("TrackPin", isDirectory: true)
             .appendingPathComponent("history.json")

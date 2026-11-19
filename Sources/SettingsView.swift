@@ -254,7 +254,7 @@ private struct CustomThemeEditor: View {
             }
             .disabled(palette == nil)
             .help("Цвета текущей обложки станут постоянными и не будут меняться вместе с треком")
-            Button("Поменять фон местами") { swap(&theme.top, &theme.bottom) }
+            Button("Поменять фон местами") { let top = theme.top; theme.top = theme.bottom; theme.bottom = top }
             Spacer()
             Button("Сбросить") { theme = .default }
         }

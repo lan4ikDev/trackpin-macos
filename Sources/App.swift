@@ -102,8 +102,8 @@ enum SelfTest {
         guard let exported = try? theme.exportData(),
               let imported = try? CustomTheme.importing(exported),
               imported == theme, imported.top.hex == "#1E2A38", imported.bottom.hex == "#0B1220", theme.dark,
-              (try? CustomTheme.importing(Data(#"{"top":"#zzz","bottom":"#000000","accent":"#FFFFFF"}"#.utf8))) == nil,
-              (try? CustomTheme.importing(Data(#"{"format":"other","top":"#000000","bottom":"#000000","accent":"#FFFFFF"}"#.utf8))) == nil else {
+              (try? CustomTheme.importing(Data(##"{"top":"#zzz","bottom":"#000000","accent":"#FFFFFF"}"##.utf8))) == nil,
+              (try? CustomTheme.importing(Data(##"{"format":"other","top":"#000000","bottom":"#000000","accent":"#FFFFFF"}"##.utf8))) == nil else {
             fatalError("Theme files could not be read")
         }
         print("Self-test passed")

@@ -16,10 +16,10 @@ import ApplicationServices
 // MARK: - Desktop app
 
 final class YandexAppBridge: PlayerBackend {
-    static let bundleIdentifiers = ["ru.yandex.desktop.music", "ru.yandex.music", "ru.yandex.desktop.music.app"]
+    static let appIdentifiers = ["ru.yandex.desktop.music", "ru.yandex.music", "ru.yandex.desktop.music.app"]
 
     let source = MusicSource.yandexApp
-    let bundleIdentifiers = YandexAppBridge.bundleIdentifiers
+    let bundleIdentifiers = YandexAppBridge.appIdentifiers
     let changeNotifications: [String] = []
 
     /// Only touched on the player queue.
@@ -98,7 +98,7 @@ final class YandexAppBridge: PlayerBackend {
         var playback: Playback {
             let bar = nodes.indices.filter(inBar)
             func links(_ pattern: String) -> [Node] {
-                bar.map { nodes[$0] }.filter { $0.role == kAXLinkRole as String && ($0.url?.contains(pattern) ?? false) && !$0.text.isEmpty }
+                bar.map { nodes[$0] }.filter { $0.role == "AXLink" && ($0.url?.contains(pattern) ?? false) && !$0.text.isEmpty }
                     .sorted { $0.frame.minX < $1.frame.minX }
             }
             guard let title = links("/track/").first else { return .idle }
@@ -187,7 +187,7 @@ final class YandexAppBridge: PlayerBackend {
         let description = Self.attribute(element, kAXDescriptionAttribute) as? String ?? ""
         let value = Self.attribute(element, kAXValueAttribute)
         var url: String?
-        if role == kAXLinkRole as String || role == kAXImageRole as String {
+        if role == "AXLink" || role == kAXImageRole as String {
             url = (Self.attribute(element, kAXURLAttribute) as? URL)?.absoluteString
         }
         var maxValue: Double?
@@ -209,7 +209,7 @@ final class YandexAppBridge: PlayerBackend {
             }
         }
         let own = [title, description].first { !$0.isEmpty } ?? ""
-        let name = (role == kAXLinkRole as String && !own.isEmpty ? own : text)
+        let name = (role == "AXLink" && !own.isEmpty ? own : text)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let node = nodes[index]
         nodes[index] = Node(element: node.element, role: node.role, label: node.label, url: node.url, text: name,

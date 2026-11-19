@@ -46,7 +46,7 @@ struct TrackPinCard: View {
 
     @Environment(\.colorScheme) private var scheme
 
-    private var colors: ThemeColors { style.theme.colors(palette: snapshot.palette, scheme: scheme) }
+    private var colors: ThemeColors { style.colors(palette: snapshot.palette, scheme: scheme) }
     private var coverImage: NSImage? { snapshot.cover.flatMap(NSImage.init(data:)) }
 
     var body: some View {

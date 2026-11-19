@@ -78,6 +78,14 @@ enum SelfTest {
               partial.theme == .plum, partial.seekStep == 15, partial.showTime else {
             fatalError("Widget style could not be decoded")
         }
+        let theme = CustomTheme(name: "Ночь", top: RGB(hex: "#1E2A38")!, bottom: RGB(hex: "0b1220")!, accent: RGB(hex: "#8CE6FF")!)
+        guard let exported = try? theme.exportData(),
+              let imported = try? CustomTheme.importing(exported),
+              imported == theme, imported.top.hex == "#1E2A38", imported.bottom.hex == "#0B1220", theme.dark,
+              (try? CustomTheme.importing(Data(#"{"top":"#zzz","bottom":"#000000","accent":"#FFFFFF"}"#.utf8))) == nil,
+              (try? CustomTheme.importing(Data(#"{"format":"other","top":"#000000","bottom":"#000000","accent":"#FFFFFF"}"#.utf8))) == nil else {
+            fatalError("Theme files could not be read")
+        }
         print("Self-test passed")
     }
 }

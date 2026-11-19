@@ -6,7 +6,7 @@ import WidgetKit
 // MARK: Per-widget configuration (right click on the widget → "Edit TrackPin")
 
 enum ThemeChoice: String, AppEnum {
-    case app, artwork, blur, system, graphite, plum, forest, ocean, sunset, paper
+    case app, artwork, blur, system, graphite, plum, forest, ocean, sunset, paper, custom
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Тема"
     static var caseDisplayRepresentations: [ThemeChoice: DisplayRepresentation] = [
@@ -19,7 +19,8 @@ enum ThemeChoice: String, AppEnum {
         .forest: "Хвоя",
         .ocean: "Океан",
         .sunset: "Закат",
-        .paper: "Бумага"
+        .paper: "Бумага",
+        .custom: "Своя (из приложения)"
     ]
 }
 
@@ -165,7 +166,7 @@ private struct CoverEntryView: View {
     let entry: Entry
 
     var body: some View {
-        let colors = entry.style.theme.colors(palette: entry.snapshot.palette, scheme: scheme)
+        let colors = entry.style.colors(palette: entry.snapshot.palette, scheme: scheme)
         let large = family != .systemSmall
         if let track = entry.snapshot.playback.currentTrack {
             VStack(alignment: .leading, spacing: 2) {

@@ -7,6 +7,98 @@ struct RGB: Codable, Equatable {
     var color: Color { Color(red: r, green: g, blue: b) }
 }
 
+extension RGB {
+    /// Reads `#RRGGBB` (the `#` is optional).
+    init?(hex: String) {
+        var digits = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if digits.hasPrefix("#") { digits.removeFirst() }
+        guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+        self.init(r: Double((value >> 16) & 0xFF) / 255, g: Double((value >> 8) & 0xFF) / 255, b: Double(value & 0xFF) / 255)
+    }
+
+    var hex: String {
+        func byte(_ channel: Double) -> Int { Int((min(max(channel, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(r), byte(g), byte(b))
+    }
+
+    /// Relative luminance, 0 (black) to 1 (white).
+    var luminance: Double { 0.2126 * r + 0.7152 * g + 0.0722 * b }
+}
+
+/// A theme made in the TrackPin theme editor. It is stored with the widget style and is
+/// also the format of an exported theme file:
+///
+///     {"format": "trackpin-theme", "version": 1, "name": "Ночь",
+///      "top": "#1E2A38", "bottom": "#0B1220", "accent": "#8CE6FF"}
+struct CustomTheme: Codable, Equatable {
+    var name: String
+    var top: RGB
+    var bottom: RGB
+    var accent: RGB
+
+    static let format = "trackpin-theme"
+
+    static let `default` = CustomTheme(name: "Моя тема",
+                                       top: RGB(r: 0.16, g: 0.20, b: 0.32),
+                                       bottom: RGB(r: 0.06, g: 0.07, b: 0.14),
+                                       accent: RGB(r: 1, g: 0.55, b: 0.42))
+
+    /// Light text on a dark background, or dark text on a light one, picked from the background.
+    var dark: Bool { (top.luminance + bottom.luminance) / 2 < 0.55 }
+
+    var colors: ThemeColors {
+        ThemeColors(background: [top.color, bottom.color], accent: accent.color, dark: dark)
+    }
+
+    init(name: String, top: RGB, bottom: RGB, accent: RGB) {
+        self.name = name
+        self.top = top
+        self.bottom = bottom
+        self.accent = accent
+    }
+
+    private enum CodingKeys: String, CodingKey { case format, version, name, top, bottom, accent }
+
+    struct InvalidFile: LocalizedError {
+        var errorDescription: String? { "Это не файл темы TrackPin или в нём неверные цвета." }
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let format = try c.decodeIfPresent(String.self, forKey: .format), format != Self.format { throw InvalidFile() }
+        func color(_ key: CodingKeys) throws -> RGB {
+            guard let rgb = RGB(hex: try c.decode(String.self, forKey: key)) else { throw InvalidFile() }
+            return rgb
+        }
+        top = try color(.top)
+        bottom = try color(.bottom)
+        accent = try color(.accent)
+        let decodedName = (try? c.decode(String.self, forKey: .name))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        name = decodedName.isEmpty ? Self.default.name : String(decodedName.prefix(40))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(Self.format, forKey: .format)
+        try c.encode(1, forKey: .version)
+        try c.encode(name, forKey: .name)
+        try c.encode(top.hex, forKey: .top)
+        try c.encode(bottom.hex, forKey: .bottom)
+        try c.encode(accent.hex, forKey: .accent)
+    }
+
+    /// Pretty JSON for a theme file.
+    func exportData() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(self)
+    }
+
+    static func importing(_ data: Data) throws -> CustomTheme {
+        do { return try JSONDecoder().decode(CustomTheme.self, from: data) } catch { throw InvalidFile() }
+    }
+}
+
 /// Colors sampled from the current album artwork by the host app.
 struct ArtworkPalette: Codable, Equatable {
     var top: RGB
@@ -15,7 +107,7 @@ struct ArtworkPalette: Codable, Equatable {
 }
 
 enum WidgetTheme: String, Codable, CaseIterable, Identifiable {
-    case artwork, blur, system, graphite, plum, forest, ocean, sunset, paper
+    case artwork, blur, system, graphite, plum, forest, ocean, sunset, paper, custom
 
     var id: String { rawValue }
 
@@ -30,13 +122,16 @@ enum WidgetTheme: String, Codable, CaseIterable, Identifiable {
         case .ocean: "Океан"
         case .sunset: "Закат"
         case .paper: "Бумага"
+        case .custom: "Своя"
         }
     }
 
     /// Resolved colors for drawing. `palette` is used by the artwork based themes,
-    /// `scheme` by the system theme.
-    func colors(palette: ArtworkPalette?, scheme: ColorScheme) -> ThemeColors {
+    /// `scheme` by the system theme, `custom` by the theme from the editor.
+    func colors(palette: ArtworkPalette?, scheme: ColorScheme, custom: CustomTheme = .default) -> ThemeColors {
         switch self {
+        case .custom:
+            return custom.colors
         case .artwork, .blur:
             guard let palette else { return WidgetTheme.graphite.colors(palette: nil, scheme: scheme) }
             return ThemeColors(background: [palette.top.color, palette.bottom.color], accent: palette.accent.color,

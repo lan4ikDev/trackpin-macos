@@ -10,8 +10,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "3.2"
-    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "3.3"
+    CURRENT_PROJECT_VERSION: "8"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     # Set TRACKPIN_TEAM to your Apple developer team id (a free Apple ID team works),
     # or pick the team in Xcode under Signing & Capabilities. macOS lists widgets
@@ -20,6 +20,8 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     DEAD_CODE_STRIPPING: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
 targets:
   TrackPin:
     type: application

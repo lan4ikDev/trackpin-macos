@@ -394,16 +394,16 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             item.button?.action = #selector(statusClicked)
             item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
             let menu = NSMenu()
-            add("Мини-плеер", #selector(showMiniPlayer), to: menu)
-            add("Настройки…", #selector(showSettings), to: menu, key: ",")
-            let sleep = NSMenuItem(title: "Таймер сна", action: nil, keyEquivalent: "")
+            add(String(localized: "Мини-плеер"), #selector(showMiniPlayer), to: menu)
+            add(String(localized: "Настройки…"), #selector(showSettings), to: menu, key: ",")
+            let sleep = NSMenuItem(title: String(localized: "Таймер сна"), action: nil, keyEquivalent: "")
             sleep.submenu = NSMenu()
             menu.addItem(sleep)
             sleepMenuItem = sleep
-            add("Открыть плеер", #selector(openPlayer), to: menu)
-            add("Обновить виджеты", #selector(reloadWidgets), to: menu)
+            add(String(localized: "Открыть плеер"), #selector(openPlayer), to: menu)
+            add(String(localized: "Обновить виджеты"), #selector(reloadWidgets), to: menu)
             menu.addItem(.separator())
-            menu.addItem(withTitle: "Выйти из TrackPin", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            menu.addItem(withTitle: String(localized: "Выйти из TrackPin"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
             statusMenu = menu
             status = item
             updateSleepMenu()
@@ -440,24 +440,24 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.removeAllItems()
         let current = sleepTimer.mode
         for minutes in SleepTimer.presets {
-            let item = NSMenuItem(title: "\(minutes) минут", action: #selector(startSleep(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: String(localized: "\(minutes) минут"), action: #selector(startSleep(_:)), keyEquivalent: "")
             item.target = self
             item.tag = minutes
             item.state = current == .minutes(minutes) ? .on : .off
             menu.addItem(item)
         }
-        let end = NSMenuItem(title: "В конце трека", action: #selector(startSleep(_:)), keyEquivalent: "")
+        let end = NSMenuItem(title: String(localized: "В конце трека"), action: #selector(startSleep(_:)), keyEquivalent: "")
         end.target = self
         end.tag = 0
         end.state = current == .endOfTrack ? .on : .off
         menu.addItem(end)
         if current != nil {
             menu.addItem(.separator())
-            let off = NSMenuItem(title: "Выключить таймер", action: #selector(cancelSleep), keyEquivalent: "")
+            let off = NSMenuItem(title: String(localized: "Выключить таймер"), action: #selector(cancelSleep), keyEquivalent: "")
             off.target = self
             menu.addItem(off)
         }
-        sleepMenuItem?.title = current.map { "Таймер сна: \($0.title.lowercased())" } ?? "Таймер сна"
+        sleepMenuItem?.title = current.map { String(localized: "Таймер сна: \($0.title.lowercased())") } ?? String(localized: "Таймер сна")
     }
 
     @objc private func startSleep(_ sender: NSMenuItem) {
@@ -484,7 +484,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
                                     showMiniPlayer: { [weak self] in self?.miniPlayer.show() })
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-            window.title = "Настройки TrackPin"
+            window.title = String(localized: "Настройки TrackPin")
             window.isReleasedWhenClosed = false
             window.collectionBehavior = [.fullScreenNone]
             window.tabbingMode = .disallowed

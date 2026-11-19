@@ -25,9 +25,9 @@ enum CardSize: CaseIterable {
 
     var title: String {
         switch self {
-        case .small: "Маленький"
-        case .medium: "Средний"
-        case .large: "Большой"
+        case .small: String(localized: "Маленький")
+        case .medium: String(localized: "Средний")
+        case .large: String(localized: "Большой")
         }
     }
 }
@@ -149,13 +149,13 @@ struct TrackPinCard: View {
 
     private var message: (icon: String, title: String, detail: String) {
         if !snapshot.hostReachable {
-            return ("pin.fill", "Открой TrackPin", "Приложение передаёт виджету трек и выполняет команды")
+            return ("pin.fill", String(localized: "Открой TrackPin"), String(localized: "Приложение передаёт виджету трек и выполняет команды"))
         }
         switch snapshot.playback {
-        case .closed: return ("music.note", "Плеер закрыт", "Нажми, чтобы открыть \(snapshot.sourceTitle)")
-        case .idle: return ("music.note.list", "Ничего не играет", "Включи трек в плеере «\(snapshot.sourceTitle)»")
-        case .denied: return ("lock.fill", "Нужен доступ", "Нажми и разреши TrackPin читать \(snapshot.sourceTitle)")
-        case .unavailable: return ("exclamationmark.triangle.fill", "Плеер не ответил", "Попробуем ещё раз через пару секунд")
+        case .closed: return ("music.note", String(localized: "Плеер закрыт"), String(localized: "Нажми, чтобы открыть \(snapshot.sourceTitle)"))
+        case .idle: return ("music.note.list", String(localized: "Ничего не играет"), String(localized: "Включи трек в плеере «\(snapshot.sourceTitle)»"))
+        case .denied: return ("lock.fill", String(localized: "Нужен доступ"), String(localized: "Нажми и разреши TrackPin читать \(snapshot.sourceTitle)"))
+        case .unavailable: return ("exclamationmark.triangle.fill", String(localized: "Плеер не ответил"), String(localized: "Попробуем ещё раз через пару секунд"))
         case .track: return ("music.note", "", "")
         }
     }
@@ -357,13 +357,13 @@ struct TrackPinCard: View {
 
     private func label(_ action: PlayerAction, playing: Bool) -> String {
         switch action {
-        case .toggle: playing ? "Пауза" : "Воспроизвести"
-        case .previous: "Предыдущий трек"
-        case .next: "Следующий трек"
-        case .rewind: "Назад на \(style.seekStep) секунд"
-        case .forward: "Вперёд на \(style.seekStep) секунд"
-        case .volumeUp: "Громче"
-        case .volumeDown: "Тише"
+        case .toggle: playing ? String(localized: "Пауза") : String(localized: "Воспроизвести")
+        case .previous: String(localized: "Предыдущий трек")
+        case .next: String(localized: "Следующий трек")
+        case .rewind: String(localized: "Назад на \(style.seekStep) секунд")
+        case .forward: String(localized: "Вперёд на \(style.seekStep) секунд")
+        case .volumeUp: String(localized: "Громче")
+        case .volumeDown: String(localized: "Тише")
         }
     }
 

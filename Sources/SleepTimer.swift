@@ -125,8 +125,8 @@ final class SleepTimer: ObservableObject {
 extension SleepTimer.Mode {
     var title: String {
         switch self {
-        case let .minutes(minutes): "Через \(minutes) мин"
-        case .endOfTrack: "В конце трека"
+        case let .minutes(minutes): String(localized: "Через \(minutes) мин")
+        case .endOfTrack: String(localized: "В конце трека")
         }
     }
 }

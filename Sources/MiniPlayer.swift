@@ -253,13 +253,13 @@ struct MiniPlayerView: View {
                       hovering: hovering, animating: model.presented && model.onScreen && track.playing,
                       close: close, showSettings: showSettings)
         case .closed:
-            message("music.note", "Плеер закрыт", "Запусти \(name), и здесь появится трек.", "Открыть \(name)", player.openPlayer)
+            message("music.note", String(localized: "Плеер закрыт"), String(localized: "Запусти \(name), и здесь появится трек."), String(localized: "Открыть \(name)"), player.openPlayer)
         case .idle:
-            message("music.note.list", "Ничего не играет", "Включи трек в плеере «\(name)».", "Открыть \(name)", player.openPlayer)
+            message("music.note.list", String(localized: "Ничего не играет"), String(localized: "Включи трек в плеере «\(name)»."), String(localized: "Открыть \(name)"), player.openPlayer)
         case .denied:
-            message("lock.fill", "Нужен доступ", player.source.accessHint, "Открыть настройки", player.source.requestAccess)
+            message("lock.fill", String(localized: "Нужен доступ"), player.source.accessHint, String(localized: "Открыть настройки"), player.source.requestAccess)
         case .unavailable:
-            message("exclamationmark.triangle.fill", "Плеер не ответил", "Проверь, что плеер запущен.", "Повторить", player.retry)
+            message("exclamationmark.triangle.fill", String(localized: "Плеер не ответил"), String(localized: "Проверь, что плеер запущен."), String(localized: "Повторить"), player.retry)
         }
     }
 
@@ -541,12 +541,12 @@ private struct TrackCard: View {
     private var controls: some View {
         HStack(spacing: 0) {
             if preferences.popupShowsModes {
-                mode("shuffle", active: track.shuffling == true, label: "Перемешать") {
+                mode("shuffle", active: track.shuffling == true, label: String(localized: "Перемешать")) {
                     player.send(.shuffle(!(track.shuffling ?? false)))
                 }
                 Spacer(minLength: 0)
             }
-            control("backward.end.fill", label: "Предыдущий трек") { player.send(.previous) }
+            control("backward.end.fill", label: String(localized: "Предыдущий трек")) { player.send(.previous) }
             Spacer(minLength: 0)
             Button { player.send(.toggle) } label: {
                 Image(systemName: track.playing ? "pause.fill" : "play.fill")
@@ -560,10 +560,10 @@ private struct TrackCard: View {
             .buttonStyle(PressStyle())
             .accessibilityLabel(track.playing ? "Пауза" : "Воспроизвести")
             Spacer(minLength: 0)
-            control("forward.end.fill", label: "Следующий трек") { player.send(.next) }
+            control("forward.end.fill", label: String(localized: "Следующий трек")) { player.send(.next) }
             if preferences.popupShowsModes {
                 Spacer(minLength: 0)
-                mode("repeat", active: track.repeating == true, label: "Повтор") {
+                mode("repeat", active: track.repeating == true, label: String(localized: "Повтор")) {
                     player.send(.repeating(!(track.repeating ?? false)))
                 }
             }
@@ -715,14 +715,14 @@ private struct HistoryRow: View {
         }
     }
 
-    /// "сейчас", "5 мин", "3 ч", "2 дн".
+    /// String(localized: "сейчас"), String(localized: "5 мин"), String(localized: "3 ч"), String(localized: "2 дн").
     static func age(of date: Date) -> String {
         let seconds = max(0, Date().timeIntervalSince(date))
         switch seconds {
-        case ..<60: return "сейчас"
-        case ..<3600: return "\(Int(seconds / 60)) мин"
-        case ..<86400: return "\(Int(seconds / 3600)) ч"
-        default: return "\(Int(seconds / 86400)) дн"
+        case ..<60: return String(localized: "сейчас")
+        case ..<3600: return String(localized: "\(Int(seconds / 60)) мин")
+        case ..<86400: return String(localized: "\(Int(seconds / 3600)) ч")
+        default: return String(localized: "\(Int(seconds / 86400)) дн")
         }
     }
 }
@@ -836,15 +836,15 @@ private struct LyricsPanel: View {
             ProgressView().controlSize(.small)
         case .failed:
             VStack(spacing: 6) {
-                note("Не удалось загрузить текст")
+                note(String(localized: "Не удалось загрузить текст"))
                 Button("Повторить") { lyrics.load(track, force: true) }
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(accent)
             }
         case .loaded(.notFound):
-            note("Текст не найден")
+            note(String(localized: "Текст не найден"))
         case .loaded(.instrumental):
-            note("♪ Инструментал")
+            note(String(localized: "♪ Инструментал"))
         case let .loaded(.plain(text)):
             ScrollView(.vertical, showsIndicators: false) {
                 Text(text)

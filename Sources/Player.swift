@@ -24,7 +24,7 @@ enum SourceSelection: Hashable, Identifiable {
 
     var title: String {
         switch self {
-        case .automatic: "Автоматически: тот, что играет"
+        case .automatic: String(localized: "Автоматически: тот, что играет")
         case let .fixed(source): source.settingsTitle
         }
     }
@@ -309,11 +309,11 @@ extension MusicSource {
     var accessHint: String {
         switch self {
         case .spotify, .appleMusic:
-            "Разреши TrackPin управлять \(title) в разделе «Автоматизация»."
+            String(localized: "Разреши TrackPin управлять \(title) в разделе «Автоматизация».")
         case .yandexApp:
-            "Включи TrackPin в разделе «Универсальный доступ»: так он видит плеер Яндекс Музыки."
+            String(localized: "Включи TrackPin в разделе «Универсальный доступ»: так он видит плеер Яндекс Музыки.")
         case .yandexWeb:
-            "Разреши TrackPin управлять браузером в разделе «Автоматизация» и включи в браузере «Разрешить JavaScript из Apple Events»."
+            String(localized: "Разреши TrackPin управлять браузером в разделе «Автоматизация» и включи в браузере «Разрешить JavaScript из Apple Events».")
         }
     }
 

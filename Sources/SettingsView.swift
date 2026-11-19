@@ -109,7 +109,7 @@ private struct MiniPlayerSettings: View {
                     ForEach(PopupSize.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                OpacitySlider(title: "Непрозрачность фона", value: $preferences.popupOpacity, range: 0.3...1)
+                OpacitySlider(title: String(localized: "Непрозрачность фона"), value: $preferences.popupOpacity, range: 0.3...1)
                 Picker("Фон", selection: $preferences.popupBackground) {
                     ForEach(PopupBackground.allCases) { Text($0.title).tag($0) }
                 }
@@ -140,7 +140,7 @@ private struct MiniPlayerSettings: View {
             }
             Section {
                 Toggle("Запоминать прослушанные треки", isOn: $preferences.keepHistory)
-                LabeledContent("В истории", value: "\(history.entries.count) из \(PlayHistory.limit)")
+                LabeledContent("В истории", value: String(localized: "\(history.entries.count) из \(PlayHistory.limit)"))
                 Button("Очистить историю", role: .destructive) { history.clear() }
                     .disabled(history.entries.isEmpty)
             } header: {
@@ -149,11 +149,11 @@ private struct MiniPlayerSettings: View {
                 Text("Кнопка с часами в мини-плеере показывает недавно игравшие треки, клик включает трек снова. TrackPin записывает треки сам, пока он запущен, и хранит их только на этом Mac.")
             }
             Section("Клавиши в мини-плеере") {
-                LabeledContent("Пробел", value: "Пауза и воспроизведение")
-                LabeledContent("← →", value: "Перемотка на шаг из настроек виджета")
-                LabeledContent("↑ ↓", value: "Громкость")
-                LabeledContent("H", value: "Недавно играли")
-                LabeledContent("Esc", value: "Закрыть")
+                LabeledContent("Пробел", value: String(localized: "Пауза и воспроизведение"))
+                LabeledContent("← →", value: String(localized: "Перемотка на шаг из настроек виджета"))
+                LabeledContent("↑ ↓", value: String(localized: "Громкость"))
+                LabeledContent("H", value: String(localized: "Недавно играли"))
+                LabeledContent("Esc", value: String(localized: "Закрыть"))
             }
         }
         .formStyle(.grouped)
@@ -187,7 +187,7 @@ private struct AppearanceSettings: View {
                     Toggle("Полоса прогресса", isOn: $preferences.style.showProgress)
                     Toggle("Время трека", isOn: $preferences.style.showTime)
                         .disabled(!preferences.style.showProgress)
-                    OpacitySlider(title: "Непрозрачность фона", value: $preferences.style.opacity,
+                    OpacitySlider(title: String(localized: "Непрозрачность фона"), value: $preferences.style.opacity,
                                   range: WidgetStyle.opacityRange)
                 }
                 Section("Кнопки") {
@@ -304,7 +304,7 @@ private struct ThemeGrid: View {
 
 // MARK: Theme editor
 
-/// Colors of the "Своя" theme. Changes reach the widget right away, like any other setting.
+/// Colors of the String(localized: "Своя") theme. Changes reach the widget right away, like any other setting.
 private struct CustomThemeEditor: View {
     @Binding var theme: CustomTheme
     let palette: ArtworkPalette?
@@ -359,21 +359,21 @@ private struct ThemeFileButtons: View {
     private func exportTheme() {
         let theme = preferences.style.customTheme
         let panel = NSSavePanel()
-        panel.title = "Экспорт темы"
+        panel.title = String(localized: "Экспорт темы")
         panel.allowedContentTypes = [.json]
         panel.nameFieldStringValue = "\(theme.name.replacingOccurrences(of: "/", with: "-")).json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try theme.exportData().write(to: url, options: .atomic)
-            message = "Тема сохранена в «\(url.lastPathComponent)»."
+            message = String(localized: "Тема сохранена в «\(url.lastPathComponent)».")
         } catch {
-            message = "Не получилось сохранить: \(error.localizedDescription)"
+            message = String(localized: "Не получилось сохранить: \(error.localizedDescription)")
         }
     }
 
     private func importTheme() {
         let panel = NSOpenPanel()
-        panel.title = "Импорт темы"
+        panel.title = String(localized: "Импорт темы")
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -383,7 +383,7 @@ private struct ThemeFileButtons: View {
             let theme = try CustomTheme.importing(data)
             preferences.style.customTheme = theme
             preferences.style.theme = .custom
-            message = "Тема «\(theme.name)» загружена."
+            message = String(localized: "Тема «\(theme.name)» загружена.")
         } catch {
             message = error.localizedDescription
         }
@@ -424,6 +424,13 @@ private struct GeneralSettings: View {
                 Text("Плеер")
             } footer: {
                 Text(sourceFooter)
+            }
+            Section {
+                Picker("Язык", selection: $preferences.language) {
+                    ForEach(AppLanguage.allCases) { Text($0.title).tag($0) }
+                }
+            } footer: {
+                Text("Язык применится после перезапуска TrackPin. Виджет на рабочем столе говорит на языке системы.")
             }
             Section("Запуск") {
                 Toggle("Открывать TrackPin при входе в систему", isOn: Binding(
@@ -481,13 +488,13 @@ private struct GeneralSettings: View {
     private var sourceFooter: String {
         switch preferences.sourceSelection {
         case .automatic:
-            "TrackPin показывает тот плеер, который сейчас играет: Spotify, Apple Music или приложение Яндекс Музыки. Браузер проверяется, только если включить переключатель выше."
+            String(localized: "TrackPin показывает тот плеер, который сейчас играет: Spotify, Apple Music или приложение Яндекс Музыки. Браузер проверяется, только если включить переключатель выше.")
         case .fixed(.spotify), .fixed(.appleMusic):
-            "Нужно разрешение в разделе «Автоматизация». macOS спросит его при первом обращении."
+            String(localized: "Нужно разрешение в разделе «Автоматизация». macOS спросит его при первом обращении.")
         case .fixed(.yandexApp):
-            "Нужен «Универсальный доступ» для TrackPin: Яндекс Музыка не даёт другим приложениям данных о треке, поэтому TrackPin читает её окно, как VoiceOver. После каждой новой сборки TrackPin доступ может понадобиться выдать заново."
+            String(localized: "Нужен «Универсальный доступ» для TrackPin: Яндекс Музыка не даёт другим приложениям данных о треке, поэтому TrackPin читает её окно, как VoiceOver. После каждой новой сборки TrackPin доступ может понадобиться выдать заново.")
         case .fixed(.yandexWeb):
-            "Работает с вкладкой music.yandex.ru в Safari, Chrome, Яндекс Браузере, Arc, Edge, Brave и Vivaldi. В браузере нужно включить «Разрешить JavaScript из Apple Events»: в Safari это меню «Разработка», в Chrome-подобных браузерах «Вид → Разработчикам»."
+            String(localized: "Работает с вкладкой music.yandex.ru в Safari, Chrome, Яндекс Браузере, Arc, Edge, Brave и Vivaldi. В браузере нужно включить «Разрешить JavaScript из Apple Events»: в Safari это меню «Разработка», в Chrome-подобных браузерах «Вид → Разработчикам».")
         }
     }
 }
@@ -536,11 +543,11 @@ private struct HelpSettings: View {
 
     private var spotifyStatus: String {
         switch player.playback {
-        case .closed: "Не запущен"
-        case .idle: "Ничего не играет"
-        case .denied: "Нет доступа"
-        case .unavailable: "Не отвечает"
-        case let .track(track): track.playing ? "Играет «\(track.title)»" : "На паузе"
+        case .closed: String(localized: "Не запущен")
+        case .idle: String(localized: "Ничего не играет")
+        case .denied: String(localized: "Нет доступа")
+        case .unavailable: String(localized: "Не отвечает")
+        case let .track(track): track.playing ? String(localized: "Играет «\(track.title)»") : String(localized: "На паузе")
         }
     }
 

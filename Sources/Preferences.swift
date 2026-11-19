@@ -8,9 +8,9 @@ enum TapAction: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .spotify: "Открыть плеер"
-        case .player: "Открыть мини-плеер"
-        case .settings: "Открыть настройки TrackPin"
+        case .spotify: String(localized: "Открыть плеер")
+        case .player: String(localized: "Открыть мини-плеер")
+        case .settings: String(localized: "Открыть настройки TrackPin")
         }
     }
 }
@@ -27,9 +27,9 @@ enum PopupSize: String, CaseIterable, Identifiable {
     }
     var title: String {
         switch self {
-        case .compact: "Компактный"
-        case .regular: "Обычный"
-        case .large: "Большой"
+        case .compact: String(localized: "Компактный")
+        case .regular: String(localized: "Обычный")
+        case .large: String(localized: "Большой")
         }
     }
 }
@@ -44,9 +44,9 @@ enum PopupBackground: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .artwork: "Размытая обложка"
-        case .theme: "Тема виджета"
-        case .glass: "Стекло"
+        case .artwork: String(localized: "Размытая обложка")
+        case .theme: String(localized: "Тема виджета")
+        case .glass: String(localized: "Стекло")
         }
     }
 }
@@ -56,8 +56,8 @@ enum PopupPlacement: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .cursor: "Рядом с курсором"
-        case .center: "По центру экрана"
+        case .cursor: String(localized: "Рядом с курсором")
+        case .center: String(localized: "По центру экрана")
         }
     }
 }
@@ -68,9 +68,23 @@ enum PopupVisualizer: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .off: "Нет"
-        case .compact: "У названия трека"
-        case .wide: "Под обложкой"
+        case .off: String(localized: "Нет")
+        case .compact: String(localized: "У названия трека")
+        case .wide: String(localized: "Под обложкой")
+        }
+    }
+}
+
+/// The language of TrackPin's own windows. The widget follows the system language.
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system, ru, en
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: String(localized: "Как в системе")
+        // Each language is named in itself, so it can be found whatever is shown now.
+        case .ru: "Русский"
+        case .en: "English"
         }
     }
 }
@@ -94,6 +108,13 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(refreshInterval, forKey: Key.refreshInterval) }
     }
     /// Show TrackPin in the Dock like a regular app, with a playback menu on right click.
+    /// Stored as the app's own `AppleLanguages`, which Foundation reads at launch.
+    @Published var language: AppLanguage {
+        didSet {
+            if language == .system { defaults.removeObject(forKey: "AppleLanguages") }
+            else { defaults.set([language.rawValue], forKey: "AppleLanguages") }
+        }
+    }
     @Published var showInDock: Bool {
         didSet { defaults.set(showInDock, forKey: Key.showInDock) }
     }
@@ -228,6 +249,13 @@ final class Preferences: ObservableObject {
         refreshInterval = Self.refreshIntervals.contains(interval) ? interval : 1
         showMenuBarIcon = defaults.object(forKey: Key.showMenuBarIcon) as? Bool ?? true
         showInDock = defaults.bool(forKey: Key.showInDock)
+        // Only a language set here is in the app's own domain; the global one is the system's.
+        if let own = defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleLanguages"] as? [String],
+           let first = own.first, let chosen = AppLanguage(rawValue: String(first.prefix(2))) {
+            language = chosen
+        } else {
+            language = .system
+        }
         tapAction = defaults.string(forKey: Key.tapAction).flatMap(TapAction.init(rawValue:)) ?? .player
         launchSpotifyOnPlay = defaults.object(forKey: Key.launchSpotifyOnPlay) as? Bool ?? true
         didOnboard = defaults.bool(forKey: Key.didOnboard)

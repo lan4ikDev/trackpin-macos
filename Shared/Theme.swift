@@ -28,7 +28,7 @@ extension RGB {
 /// A theme made in the TrackPin theme editor. It is stored with the widget style and is
 /// also the format of an exported theme file:
 ///
-///     {"format": "trackpin-theme", "version": 1, "name": "Ночь",
+///     {"format": "trackpin-theme", "version": 1, "name": String(localized: "Ночь"),
 ///      "top": "#1E2A38", "bottom": "#0B1220", "accent": "#8CE6FF"}
 struct CustomTheme: Codable, Equatable {
     var name: String
@@ -38,7 +38,7 @@ struct CustomTheme: Codable, Equatable {
 
     static let format = "trackpin-theme"
 
-    static let `default` = CustomTheme(name: "Моя тема",
+    static let `default` = CustomTheme(name: String(localized: "Моя тема"),
                                        // Hex values, so the theme survives a round trip through a theme file unchanged.
                                        top: RGB(hex: "#293352")!,
                                        bottom: RGB(hex: "#0F1224")!,
@@ -61,7 +61,7 @@ struct CustomTheme: Codable, Equatable {
     private enum CodingKeys: String, CodingKey { case format, version, name, top, bottom, accent }
 
     struct InvalidFile: LocalizedError {
-        var errorDescription: String? { "Это не файл темы TrackPin или в нём неверные цвета." }
+        var errorDescription: String? { String(localized: "Это не файл темы TrackPin или в нём неверные цвета.") }
     }
 
     init(from decoder: Decoder) throws {
@@ -114,16 +114,16 @@ enum WidgetTheme: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .artwork: "По обложке"
-        case .blur: "Размытая обложка"
-        case .system: "Системная"
-        case .graphite: "Графит"
-        case .plum: "Слива"
-        case .forest: "Хвоя"
-        case .ocean: "Океан"
-        case .sunset: "Закат"
-        case .paper: "Бумага"
-        case .custom: "Своя"
+        case .artwork: String(localized: "По обложке")
+        case .blur: String(localized: "Размытая обложка")
+        case .system: String(localized: "Системная")
+        case .graphite: String(localized: "Графит")
+        case .plum: String(localized: "Слива")
+        case .forest: String(localized: "Хвоя")
+        case .ocean: String(localized: "Океан")
+        case .sunset: String(localized: "Закат")
+        case .paper: String(localized: "Бумага")
+        case .custom: String(localized: "Своя")
         }
     }
 

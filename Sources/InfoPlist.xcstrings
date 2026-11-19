@@ -1,0 +1,13 @@
+{
+  "sourceLanguage" : "ru",
+  "strings" : {
+    "NSAppleEventsUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "TrackPin controls playback and shows the current track of Spotify, Apple Music and Yandex Music." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "TrackPin управляет воспроизведением и показывает текущий трек Spotify, Apple Music и Яндекс Музыки." } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

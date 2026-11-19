@@ -12,9 +12,9 @@ enum ControlSet: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .tracks: "Треки"
-        case .seek: "Перемотка"
-        case .full: "Всё сразу"
+        case .tracks: String(localized: "Треки")
+        case .seek: String(localized: "Перемотка")
+        case .full: String(localized: "Всё сразу")
         }
     }
 }
@@ -24,9 +24,9 @@ enum ArtworkShape: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .rounded: "Скруглённая"
-        case .square: "Квадратная"
-        case .circle: "Пластинка"
+        case .rounded: String(localized: "Скруглённая")
+        case .square: String(localized: "Квадратная")
+        case .circle: String(localized: "Пластинка")
         }
     }
 }

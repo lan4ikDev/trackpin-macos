@@ -11,7 +11,7 @@ enum MusicSource: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .spotify: "Spotify"
         case .appleMusic: "Apple Music"
-        case .yandexApp, .yandexWeb: "Яндекс Музыка"
+        case .yandexApp, .yandexWeb: String(localized: "Яндекс Музыка")
         }
     }
 
@@ -20,8 +20,8 @@ enum MusicSource: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .spotify: "Spotify"
         case .appleMusic: "Apple Music"
-        case .yandexApp: "Яндекс Музыка (приложение)"
-        case .yandexWeb: "Яндекс Музыка (в браузере)"
+        case .yandexApp: String(localized: "Яндекс Музыка (приложение)")
+        case .yandexWeb: String(localized: "Яндекс Музыка (в браузере)")
         }
     }
 }

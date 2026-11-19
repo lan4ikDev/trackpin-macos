@@ -91,24 +91,20 @@ The app must keep running in the background for the widget to stay current. Turn
 
 ## Build
 
-Requires macOS 14 or later, Xcode 16 or later and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
-(`brew install xcodegen`).
+Requires macOS 14 or later and Xcode 16 or later. XcodeGen is downloaded on first use if it
+is not installed.
 
 ```bash
-./bootstrap.sh            # generates TrackPin.xcodeproj
-open TrackPin.xcodeproj   # choose your team in Signing & Capabilities, then Run
+./build.sh --install        # builds, replaces /Applications/TrackPin.app and restarts it
+./scripts/make-dmg.sh       # builds build/TrackPin-<version>.dmg
 ```
 
-Or from the command line:
+`build.sh` signs with the first Apple Development certificate in the keychain (any Apple ID
+works as a team: Xcode → Settings → Accounts), or with `TRACKPIN_TEAM=ABCDE12345`. With an ad
+hoc signature the app runs, but macOS may not list the widget in the gallery. After the first
+launch, right click the desktop, choose Edit Widgets and find TrackPin.
 
-```bash
-TRACKPIN_TEAM=ABCDE12345 ./build.sh
-mv build/TrackPin.app /Applications/ && open /Applications/TrackPin.app
-```
-
-Any Apple ID works as a team (Xcode → Settings → Accounts). With an ad hoc signature the app
-runs, but macOS may not list the widget in the gallery. After the first launch, right click the
-desktop, choose Edit Widgets and find TrackPin. If the widget does not appear, quit TrackPin,
-run `killall chronod NotificationCenter` and open the app again.
+The interface is in Russian and English (Settings → General → Language). Strings live in
+`Shared/Localizable.xcstrings`; the widget follows the system language.
 
 TrackPin is an independent project and is not affiliated with Spotify, Apple or Yandex.

@@ -124,6 +124,10 @@ final class Preferences: ObservableObject {
     @Published var popupCoverShape: ArtworkShape {
         didSet { defaults.set(popupCoverShape.rawValue, forKey: Key.popupCoverShape) }
     }
+    /// Remember the tracks TrackPin sees playing, for the history in the mini player.
+    @Published var keepHistory: Bool {
+        didSet { defaults.set(keepHistory, forKey: Key.keepHistory) }
+    }
     @Published var didOnboard: Bool {
         didSet { defaults.set(didOnboard, forKey: Key.didOnboard) }
     }
@@ -151,6 +155,7 @@ final class Preferences: ObservableObject {
         static let popupShowsVolume = "popupShowsVolume"
         static let popupShowsModes = "popupShowsModes"
         static let popupCoverShape = "popupCoverShape"
+        static let keepHistory = "keepHistory"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -184,6 +189,7 @@ final class Preferences: ObservableObject {
         popupShowsVolume = defaults.object(forKey: Key.popupShowsVolume) as? Bool ?? true
         popupShowsModes = defaults.object(forKey: Key.popupShowsModes) as? Bool ?? true
         popupCoverShape = defaults.string(forKey: Key.popupCoverShape).flatMap(ArtworkShape.init(rawValue:)) ?? .rounded
+        keepHistory = defaults.object(forKey: Key.keepHistory) as? Bool ?? true
     }
 
     func resetStyle() { style = WidgetStyle() }

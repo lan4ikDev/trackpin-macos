@@ -33,7 +33,8 @@ enum MiniPlayerRender {
         let sleep = SleepTimer(player: player)
         if CommandLine.arguments.contains("--sleep") { sleep.start(.minutes(30)) }
         let view = MiniPlayerView(player: player, preferences: Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard),
-                                  publisher: WidgetPublisher(), model: model, sleepTimer: sleep, close: {}, showSettings: {})
+                                  publisher: WidgetPublisher(), history: PlayHistory(fileURL: nil), model: model,
+                                  sleepTimer: sleep, close: {}, showSettings: {})
             .background(Color(white: 0.85))
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
@@ -91,8 +92,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
     private lazy var player = Player(demo: CommandLine.arguments.contains("--demo"))
     private let publisher = WidgetPublisher()
+    private let history = PlayHistory(fileURL: CommandLine.arguments.contains("--demo") ? nil : PlayHistory.defaultURL)
     private lazy var miniPlayer = MiniPlayerController(player: player, preferences: preferences, publisher: publisher,
-                                                       sleepTimer: sleepTimer)
+                                                       history: history, sleepTimer: sleepTimer)
     private var observations: Set<AnyCancellable> = []
     private var settingsWindow: NSWindow?
     private var status: NSStatusItem?
@@ -120,6 +122,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .combineLatest(preferences.$style.removeDuplicates())
             .sink { [weak self] playback, style in self?.publisher.publish(playback, style: style) }
+            .store(in: &observations)
+        // `record` ignores repeated reads of the same play, so every playing read can go in.
+        player.$playback
+            .compactMap(\.currentTrack)
+            .filter(\.playing)
+            .sink { [weak self] track in
+                guard let self, self.preferences.keepHistory else { return }
+                self.history.record(track)
+            }
             .store(in: &observations)
         preferences.$refreshInterval
             .sink { [weak self] interval in self?.player.foregroundInterval = interval }
@@ -184,6 +195,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             bindings.append(.init(keyCode: kVK_LeftArrow, modifiers: modifiers) { [weak self] in self?.perform(.previous, step: 15) {} })
         }
         if !bindings.isEmpty { hotKeys = HotKeys(bindings) }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        history.flush()
     }
 
     /// Poll Spotify often only while the user can see a TrackPin window.
@@ -337,7 +352,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSettings() {
         if settingsWindow == nil {
-            let view = SettingsView(preferences: preferences, player: player, publisher: publisher,
+            let view = SettingsView(preferences: preferences, player: player, publisher: publisher, history: history,
                                     showMiniPlayer: { [weak self] in self?.miniPlayer.show() })
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)

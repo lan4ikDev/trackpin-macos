@@ -5,13 +5,14 @@ struct SettingsView: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var player: Player
     @ObservedObject var publisher: WidgetPublisher
+    @ObservedObject var history: PlayHistory
     let showMiniPlayer: () -> Void
 
     var body: some View {
         TabView {
             AppearanceSettings(preferences: preferences, publisher: publisher)
                 .tabItem { Label("Виджет", systemImage: "rectangle.3.group") }
-            MiniPlayerSettings(preferences: preferences, showMiniPlayer: showMiniPlayer)
+            MiniPlayerSettings(preferences: preferences, history: history, showMiniPlayer: showMiniPlayer)
                 .tabItem { Label("Мини-плеер", systemImage: "rectangle.portrait.on.rectangle.portrait") }
             GeneralSettings(preferences: preferences)
                 .tabItem { Label("Основные", systemImage: "gearshape") }
@@ -26,6 +27,7 @@ struct SettingsView: View {
 
 private struct MiniPlayerSettings: View {
     @ObservedObject var preferences: Preferences
+    @ObservedObject var history: PlayHistory
     let showMiniPlayer: () -> Void
 
     var body: some View {
@@ -62,10 +64,21 @@ private struct MiniPlayerSettings: View {
                 Toggle("Закрывать при клике мимо", isOn: $preferences.popupClosesOnClickOutside)
                 Toggle("Горячая клавиша ⌃⌥P открывает и закрывает мини-плеер", isOn: $preferences.hotKey)
             }
+            Section {
+                Toggle("Запоминать прослушанные треки", isOn: $preferences.keepHistory)
+                LabeledContent("В истории", value: "\(history.entries.count) из \(PlayHistory.limit)")
+                Button("Очистить историю", role: .destructive) { history.clear() }
+                    .disabled(history.entries.isEmpty)
+            } header: {
+                Text("История")
+            } footer: {
+                Text("Кнопка с часами в мини-плеере показывает недавно игравшие треки, клик включает трек снова. TrackPin записывает треки сам, пока он запущен, и хранит их только на этом Mac.")
+            }
             Section("Клавиши в мини-плеере") {
                 LabeledContent("Пробел", value: "Пауза и воспроизведение")
                 LabeledContent("← →", value: "Перемотка на шаг из настроек виджета")
                 LabeledContent("↑ ↓", value: "Громкость")
+                LabeledContent("H", value: "Недавно играли")
                 LabeledContent("Esc", value: "Закрыть")
             }
         }

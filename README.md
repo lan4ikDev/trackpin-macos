@@ -32,6 +32,11 @@ progress, and has playback buttons that work right on the desktop.
 - **Sleep timer**: pause after 15–90 minutes (the volume fades out first) or at the end of the
   track, from the mini player's moon button or the menu bar menu.
 - **Track change notification** with the cover, off in the settings if you don't want it.
+- **Play history**: the clock button in the mini player (or H) lists the tracks TrackPin saw
+  playing, newest first, with covers. A click plays a track again (no Premium needed), the
+  context menu copies its link or removes it. The last 100 tracks are kept in
+  `~/Library/Application Support/TrackPin/history.json`; recording can be turned off and the
+  list cleared in the settings.
 - **Menu bar**: optional track title next to the icon, right click for the menu.
 
 ## How it works

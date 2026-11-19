@@ -79,6 +79,7 @@ final class WidgetPublisher: ObservableObject {
             case .snapshot:
                 self.reply(on: connection)
             case let .command(action, step):
+                Log.player.notice("widget command \(action.rawValue, privacy: .public)")
                 // WidgetKit reloads the widget by itself once the button's intent returns, so a
                 // reload from the app now would only spend the daily budget twice.
                 self.suppressReloads(for: 3)

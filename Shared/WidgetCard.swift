@@ -195,8 +195,10 @@ struct TrackPinCard: View {
         }
     }
 
+    /// macOS draws desktop widgets on an opaque platter and ignores a translucent background,
+    /// so the widget has no opacity setting (the mini player has one).
     private var background: some View {
-        backgroundFill.opacity(style.opacity)
+        backgroundFill
     }
 
     @ViewBuilder private var backgroundFill: some View {

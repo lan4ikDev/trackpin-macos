@@ -1345,18 +1345,18 @@
         }
       }
     },
-    "Мини-плеер открывается из точки, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc.": {
+    "Мини-плеер открывается рядом с местом, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The mini player opens from where you clicked the widget and closes with a click outside it or the Esc key."
+            "value": "The mini player opens next to where you clicked the widget and closes with a click outside it or the Esc key."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Мини-плеер открывается из точки, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc."
+            "value": "Мини-плеер открывается рядом с местом, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc."
           }
         }
       }

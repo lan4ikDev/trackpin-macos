@@ -63,10 +63,26 @@ enum AppleScript {
         """
     }
 
-    /// Runs a script once. Returns the result or the error dictionary.
+    /// Compiled scripts by source. Only touched on the player queue. Commands such as
+    /// play/pause are the same text every time, so they are compiled once instead of on every
+    /// press (compiling loads the player's scripting dictionary).
+    private static var compiled: [String: NSAppleScript] = [:]
+
+    /// Runs a script, compiling it on first use. Returns the result or the error dictionary.
     static func run(_ source: String) -> (NSAppleEventDescriptor?, NSDictionary?) {
         var error: NSDictionary?
-        let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
+        let script: NSAppleScript
+        if let cached = compiled[source] {
+            script = cached
+        } else {
+            guard let fresh = NSAppleScript(source: source) else { return (nil, nil) }
+            if fresh.compileAndReturnError(&error) {
+                if compiled.count > 64 { compiled.removeAll() }
+                compiled[source] = fresh
+            }
+            script = fresh
+        }
+        let result = script.executeAndReturnError(&error)
         return (result, error)
     }
 

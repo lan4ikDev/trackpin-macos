@@ -43,7 +43,8 @@ struct WidgetStyle: Codable, Equatable {
     var showTime = true
     /// Colors of the "custom" theme, made in the theme editor.
     var customTheme: CustomTheme = .default
-    /// Opacity of the widget background, 0.2 to 1. Text and buttons stay opaque.
+    /// Kept so settings saved by 3.2–3.4 still decode; macOS ignores a translucent widget
+    /// background, so it is no longer used or shown.
     var opacity: Double = 1
     /// Volume buttons on the medium and large widget.
     var showVolume = true

@@ -1,4 +1,9 @@
 import AppKit
+import os
+
+enum Log {
+    static let player = Logger(subsystem: "dev.lan4ik.needle", category: "player")
+}
 
 /// Which player TrackPin follows: one chosen in the settings, or whichever is playing.
 enum SourceSelection: Hashable, Identifiable {
@@ -198,6 +203,7 @@ final class Player: NSObject, ObservableObject {
 
     /// Queues a command. `completion` receives the playback state read right after the command ran.
     func send(_ command: PlayerCommand, completion: Completion? = nil) {
+        Log.player.notice("send \(String(describing: command), privacy: .public), busy: \(self.busy)")
         if demo, case var .track(track) = playback {
             switch command {
             case .toggle: track.playing.toggle()
@@ -212,6 +218,13 @@ final class Player: NSObject, ObservableObject {
             update(.track(track), from: source)
             completion?(playback)
             return
+        }
+        // Show the new play state right away; the read after the command confirms it.
+        if command == .toggle || command == .pause, case var .track(track) = playback {
+            if track.playing { track.position = min(track.duration, track.position + Date().timeIntervalSince(sampledAt)) }
+            track.playing = command == .pause ? false : !track.playing
+            sampledAt = Date()
+            playback = .track(track)
         }
         if command.coalesces, let last = pending.last, last.command.sameKind(as: command), last.completion == nil {
             pending.removeLast()
@@ -273,8 +286,13 @@ final class Player: NSObject, ObservableObject {
                 .filter { $0.source != active.source && isCandidate($0) }
             lastProbe = Date()
         }
+        let queued = Date()
         queue.async {
+            let started = Date()
             var result = active.read(command: next?.command)
+            if let command = next?.command {
+                Log.player.notice("command \(String(describing: command), privacy: .public): waited \(Int(started.timeIntervalSince(queued) * 1000)) ms, ran \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+            }
             var origin = active.source
             if Self.rank(result) < 3 {
                 for other in others {

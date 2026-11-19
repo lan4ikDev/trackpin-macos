@@ -120,7 +120,7 @@ private struct MiniPlayerSettings: View {
                 }
                 Button("Показать мини-плеер", action: showMiniPlayer)
             } footer: {
-                Text("Мини-плеер открывается из точки, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc.")
+                Text("Мини-плеер открывается рядом с местом, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc.")
             }
             Section("Вид") {
                 Picker("Размер", selection: $preferences.popupSize) {
@@ -205,8 +205,6 @@ private struct AppearanceSettings: View {
                     Toggle("Полоса прогресса", isOn: $preferences.style.showProgress)
                     Toggle("Время трека", isOn: $preferences.style.showTime)
                         .disabled(!preferences.style.showProgress)
-                    OpacitySlider(title: String(localized: "Непрозрачность фона"), value: $preferences.style.opacity,
-                                  range: WidgetStyle.opacityRange)
                 }
                 Section("Кнопки") {
                     Picker("Набор", selection: $preferences.style.controls) {

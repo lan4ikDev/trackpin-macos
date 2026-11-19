@@ -64,28 +64,26 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         let size = panel.contentView?.fittingSize ?? NSSize(width: 360, height: 560)
         let frame = place(size: size, near: origin)
         panel.setFrame(frame, display: false)
-        // Grow out of the click point, expressed in SwiftUI's top-left based unit space.
-        model.anchor = UnitPoint(x: min(max((origin.x - frame.minX) / frame.width, 0), 1),
-                                 y: min(max(1 - (origin.y - frame.minY) / frame.height, 0), 1))
         if !panel.isVisible { model.presented = false }
         panel.orderFrontRegardless()
         panel.makeKey()
         onVisibilityChange(true)
-        let animation: Animation? = preferences.popupAnimated ? .spring(response: 0.42, dampingFraction: 0.78) : nil
+        // A calm, fully damped spring: no overshoot, no bounce.
+        let animation: Animation? = preferences.popupAnimated ? .spring(response: 0.5, dampingFraction: 1) : nil
         DispatchQueue.main.async { withAnimation(animation) { self.model.presented = true } }
     }
 
     func close() {
         guard let panel, panel.isVisible, closing == nil else { return }
         let animated = preferences.popupAnimated
-        withAnimation(animated ? .easeIn(duration: 0.16) : nil) { model.presented = false }
+        withAnimation(animated ? .easeInOut(duration: 0.22) : nil) { model.presented = false }
         let work = DispatchWorkItem { [weak self] in
             panel.orderOut(nil)
             self?.closing = nil
             self?.onVisibilityChange(false)
         }
         closing = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (animated ? 0.17 : 0), execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (animated ? 0.23 : 0), execute: work)
     }
 
     private func makePanel() -> MiniPanel {
@@ -232,9 +230,11 @@ struct MiniPlayerView: View {
                     .allowsHitTesting(false)
             }
             .shadow(color: .black.opacity(0.35), radius: 18, y: 10)
-            .scaleEffect(model.presented ? 1 : 0.18, anchor: model.anchor)
+            // The card fades in from slightly smaller and lower, centered on itself rather than
+            // shooting out of the click point.
+            .scaleEffect(model.presented ? 1 : 0.94, anchor: .center)
+            .offset(y: model.presented ? 0 : 14)
             .opacity(model.presented ? 1 : 0)
-            .blur(radius: model.presented ? 0 : 8)
             .padding(MiniPlayerController.margin)
             .foregroundStyle(.white)
             .environment(\.colorScheme, .dark)

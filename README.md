@@ -28,6 +28,10 @@ progress, and has playback buttons that work right on the desktop.
   shuffle, repeat and volume. Space, arrows and Esc work while it is open. Size, background
   (blurred cover, widget theme or glass), cover shape, placement and the opening animation
   are configurable. ⌃⌥P toggles it from anywhere; the menu bar icon opens it with a left click.
+- **Lyrics** in the mini player: synced lyrics from [LRCLIB](https://lrclib.net) (free, no
+  account) scroll along with the track, the current line is highlighted and a click on a line
+  seeks to it. Falls back to plain text when there are no timestamps. Lyrics are cached in
+  `~/Library/Caches`; the quote button in the mini player or the settings turn them off.
 - **Menu bar**: optional track title next to the icon, right click for the menu.
 
 ## How it works

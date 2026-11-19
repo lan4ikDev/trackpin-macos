@@ -51,6 +51,8 @@ private struct MiniPlayerSettings: View {
                 }
                 Toggle("Громкость", isOn: $preferences.popupShowsVolume)
                 Toggle("Перемешивание и повтор", isOn: $preferences.popupShowsModes)
+                Toggle("Текст песни", isOn: $preferences.popupShowsLyrics)
+                    .help("Синхронизированный текст с lrclib.net. Нажатие на строку перематывает к ней.")
                 Text("Цвет кнопок, исполнитель и время трека берутся из настроек виджета.")
                     .font(.caption).foregroundStyle(.secondary)
             }

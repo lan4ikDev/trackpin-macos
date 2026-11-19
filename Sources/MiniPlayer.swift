@@ -13,6 +13,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     private let preferences: Preferences
     private let publisher: WidgetPublisher
     private let model = MiniPlayerModel()
+    private let lyrics = LyricsStore()
     private var panel: MiniPanel?
     private var closing: DispatchWorkItem?
     private var observations: Set<AnyCancellable> = []
@@ -88,6 +89,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         panel.animationBehavior = .none
         panel.delegate = self
         let view = MiniPlayerView(player: player, preferences: preferences, publisher: publisher, model: model,
+                                  lyrics: lyrics,
                                   close: { [weak self] in self?.close() },
                                   showSettings: { [weak self] in self?.close(); self?.showSettings() })
         let hosting = NSHostingView(rootView: view)
@@ -175,6 +177,7 @@ struct MiniPlayerView: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var publisher: WidgetPublisher
     @ObservedObject var model: MiniPlayerModel
+    let lyrics: LyricsStore
     let close: () -> Void
     let showSettings: () -> Void
 
@@ -213,7 +216,7 @@ struct MiniPlayerView: View {
     @ViewBuilder private var card: some View {
         switch player.playback {
         case let .track(track):
-            TrackCard(player: player, preferences: preferences, publisher: publisher, track: track,
+            TrackCard(player: player, preferences: preferences, publisher: publisher, lyrics: lyrics, track: track,
                       accent: colors.accent, width: width, padding: padding, corner: corner,
                       hovering: hovering, close: close, showSettings: showSettings)
         case .closed:
@@ -284,6 +287,7 @@ private struct TrackCard: View {
     @ObservedObject var player: Player
     @ObservedObject var preferences: Preferences
     @ObservedObject var publisher: WidgetPublisher
+    let lyrics: LyricsStore
     let track: Track
     let accent: Color
     let width: CGFloat
@@ -301,6 +305,9 @@ private struct TrackCard: View {
             info
             ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime)
             controls
+            if preferences.popupShowsLyrics {
+                LyricsPanel(player: player, lyrics: lyrics, track: track, accent: accent, compact: width < 280)
+            }
             if preferences.popupShowsVolume, let volume = track.volume {
                 VolumeBar(player: player, volume: volume, accent: accent)
             }
@@ -373,6 +380,18 @@ private struct TrackCard: View {
             .id(track.id)
             .transition(.opacity)
             Spacer(minLength: 0)
+            Button {
+                preferences.popupShowsLyrics.toggle()
+            } label: {
+                Image(systemName: preferences.popupShowsLyrics ? "quote.bubble.fill" : "quote.bubble")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(preferences.popupShowsLyrics ? accent : .white.opacity(0.75))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .help(preferences.popupShowsLyrics ? "Скрыть текст песни" : "Показать текст песни")
+            .accessibilityLabel("Текст песни")
+            .accessibilityAddTraits(preferences.popupShowsLyrics ? .isSelected : [])
             if let link = track.webLink {
                 Button {
                     NSPasteboard.general.clearContents()
@@ -535,6 +554,118 @@ private struct ScrubBar: View {
         target = seconds
         targetSetAt = Date()
         player.send(.seek(seconds, track.id))
+    }
+}
+
+/// Lyrics under the controls. The panel has a fixed height whatever it shows, so the card
+/// does not change size while lyrics load or when the track changes.
+private struct LyricsPanel: View {
+    @ObservedObject var player: Player
+    @ObservedObject var lyrics: LyricsStore
+    let track: Track
+    let accent: Color
+    let compact: Bool
+
+    private var height: CGFloat { compact ? 104 : 124 }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.black.opacity(0.2)))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .task(id: LyricsStore.key(for: track)) { lyrics.load(track) }
+            .animation(.easeInOut(duration: 0.25), value: lyrics.phase(for: track))
+    }
+
+    @ViewBuilder private var content: some View {
+        switch lyrics.phase(for: track) {
+        case .loading:
+            ProgressView().controlSize(.small)
+        case .failed:
+            VStack(spacing: 6) {
+                note("Не удалось загрузить текст")
+                Button("Повторить") { lyrics.load(track, force: true) }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(accent)
+            }
+        case .loaded(.notFound):
+            note("Текст не найден")
+        case .loaded(.instrumental):
+            note("♪ Инструментал")
+        case let .loaded(.plain(text)):
+            ScrollView(.vertical, showsIndicators: false) {
+                Text(text)
+                    .font(.system(size: compact ? 12 : 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+            .id(LyricsStore.key(for: track))
+        case let .loaded(.synced(lines)):
+            TimelineView(.periodic(from: .now, by: track.playing ? 0.25 : 3600)) { context in
+                SyncedLyrics(lines: lines, current: Lyrics.currentLine(in: lines, at: position(at: context.date)),
+                             compact: compact, seek: { player.send(.seek($0, track.id)) })
+            }
+            .id(LyricsStore.key(for: track))
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.white.opacity(0.55))
+    }
+
+    /// The same extrapolation as the seek bar: Spotify is only read once a second or less.
+    private func position(at date: Date) -> Double {
+        let elapsed = track.playing ? max(0, date.timeIntervalSince(player.sampledAt)) : 0
+        return min(track.duration, track.position + elapsed)
+    }
+}
+
+private struct SyncedLyrics: View {
+    let lines: [LyricLine]
+    let current: Int?
+    let compact: Bool
+    let seek: (Double) -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+                    ForEach(lines) { line in
+                        Text(line.text.isEmpty ? "♪" : line.text)
+                            .font(.system(size: compact ? 13 : 15, weight: .bold))
+                            .foregroundStyle(.white.opacity(opacity(of: line)))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .contentShape(Rectangle())
+                            .onTapGesture { seek(line.time) }
+                            .help("Перемотать сюда")
+                            .id(line.id)
+                    }
+                }
+                .padding(.horizontal, 12)
+                // Room so the first and last lines can sit in the middle.
+                .padding(.vertical, compact ? 40 : 48)
+                .animation(.easeInOut(duration: 0.25), value: current)
+            }
+            .onAppear { proxy.scrollTo(current ?? 0, anchor: .center) }
+            .onChange(of: current) { _, line in
+                withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line ?? 0, anchor: .center) }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Текст песни")
+        .accessibilityValue(current.map { lines[$0].text } ?? "")
+    }
+
+    /// The current line is bright, the ones already sung are dimmer than the ones ahead.
+    private func opacity(of line: LyricLine) -> Double {
+        guard let current else { return 0.45 }
+        if line.id == current { return 1 }
+        return line.id < current ? 0.3 : 0.45
     }
 }
 

@@ -25,20 +25,45 @@ struct SettingsView: View {
     }
 }
 
-/// A switch that always keeps its natural size. In the narrow grouped forms a long label
-/// could squeeze the native switch until its knob disappeared.
+/// A switch drawn by TrackPin itself. The native switch lost its knob in the settings
+/// window on some systems (an empty blue capsule), so this one draws the track and the
+/// knob explicitly and keeps its size however long the label is.
 private struct SettingsSwitchStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
+        SettingsSwitch(configuration: configuration)
+    }
+}
+
+private struct SettingsSwitch: View {
+    let configuration: ToggleStyleConfiguration
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.controlActiveState) private var activeState
+
+    var body: some View {
+        let on = configuration.isOn
         HStack(alignment: .center, spacing: 12) {
             configuration.label
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
-            Toggle("", isOn: configuration.$isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .fixedSize()
+            Capsule()
+                .fill(on ? (activeState == .inactive ? Color.gray.opacity(0.55) : Color.accentColor) : Color.primary.opacity(0.18))
+                .overlay(alignment: on ? .trailing : .leading) {
+                    Circle()
+                        .fill(.white)
+                        .shadow(color: .black.opacity(0.25), radius: 1.5, y: 1)
+                        .padding(2)
+                }
+                .frame(width: 34, height: 20)
+                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: on)
+                .onTapGesture { if enabled { configuration.isOn.toggle() } }
+                .accessibilityHidden(true)
         }
+        .opacity(enabled ? 1 : 0.45)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(on ? "Включено" : "Выключено")
+        .accessibilityAction { if enabled { configuration.isOn.toggle() } }
     }
 }
 

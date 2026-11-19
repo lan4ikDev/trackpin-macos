@@ -15,6 +15,11 @@ enum TrackPinApp {
             MiniPlayerRender.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
             return
         }
+        if let index = CommandLine.arguments.firstIndex(of: "--render-settings"),
+           CommandLine.arguments.indices.contains(index + 1) {
+            MiniPlayerRender.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+            return
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -42,6 +47,40 @@ enum MiniPlayerRender {
         let rep = NSBitmapImageRep(cgImage: image)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
         writeWidgets(next: url)
+    }
+
+    /// Every settings tab, drawn by AppKit into PNGs (`<path>-<tab>.png`), so real controls
+    /// such as switches show up as they do on screen.
+    static func writeSettings(to url: URL) {
+        _ = NSApplication.shared
+        let preferences = Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard)
+        let player = Player(demo: true)
+        let view = SettingsView(preferences: preferences, player: player, publisher: WidgetPublisher(),
+                                history: PlayHistory(fileURL: nil), showMiniPlayer: {})
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let hosting = NSHostingView(rootView: view)
+        window.contentView = hosting
+        NSApp.setActivationPolicy(.accessory)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        let tabs = CommandLine.arguments.contains("--all-tabs") ? 4 : 1
+        for tab in 0..<tabs {
+            if tab > 0, let tabView = Self.find(NSTabView.self, in: hosting) { tabView.selectTabViewItem(at: tab) }
+            RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+            hosting.layoutSubtreeIfNeeded()
+            guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { continue }
+            hosting.cacheDisplay(in: hosting.bounds, to: rep)
+            let target = url.deletingPathExtension().appendingPathExtension("\(tab).png")
+            try? rep.representation(using: .png, properties: [:])?.write(to: target)
+        }
+        window.orderOut(nil)
+    }
+
+    private static func find<T: NSView>(_ type: T.Type, in view: NSView) -> T? {
+        if let match = view as? T { return match }
+        for child in view.subviews { if let match = find(type, in: child) { return match } }
+        return nil
     }
 
     /// The medium and large widget faces with a demo track, next to the mini player image.

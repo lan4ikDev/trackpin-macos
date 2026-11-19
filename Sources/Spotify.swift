@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 enum PlayerCommand: Equatable {
-    case previous, toggle, next, skip(Int), seek(Double, String)
+    case previous, toggle, pause, next, skip(Int), seek(Double, String)
     case volume(Int), shuffle(Bool), repeating(Bool)
 
     init(_ action: PlayerAction, step: Int) {
@@ -34,6 +34,7 @@ enum PlayerCommand: Equatable {
         switch self {
         case .previous: return "previous track"
         case .toggle: return "playpause"
+        case .pause: return "pause"
         case .next: return "next track"
         case let .skip(offset):
             return """
@@ -285,6 +286,7 @@ final class Player: NSObject, ObservableObject {
         if demo, case var .track(track) = playback {
             switch command {
             case .toggle: track.playing.toggle()
+            case .pause: track.playing = false
             case .previous, .next: track.position = 0
             case let .skip(offset): track.position = min(max(0, track.position + Double(offset)), track.duration)
             case let .seek(seconds, _): track.position = seconds

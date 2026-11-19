@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import SwiftUI
 
@@ -28,8 +29,11 @@ enum MiniPlayerRender {
     static func write(to url: URL) {
         let model = MiniPlayerModel()
         model.presented = true
-        let view = MiniPlayerView(player: Player(demo: true), preferences: Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard),
-                                  publisher: WidgetPublisher(), model: model, close: {}, showSettings: {})
+        let player = Player(demo: true)
+        let sleep = SleepTimer(player: player)
+        if CommandLine.arguments.contains("--sleep") { sleep.start(.minutes(30)) }
+        let view = MiniPlayerView(player: player, preferences: Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard),
+                                  publisher: WidgetPublisher(), model: model, sleepTimer: sleep, close: {}, showSettings: {})
             .background(Color(white: 0.85))
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
@@ -87,12 +91,16 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
     private lazy var player = Player(demo: CommandLine.arguments.contains("--demo"))
     private let publisher = WidgetPublisher()
-    private lazy var miniPlayer = MiniPlayerController(player: player, preferences: preferences, publisher: publisher)
+    private lazy var miniPlayer = MiniPlayerController(player: player, preferences: preferences, publisher: publisher,
+                                                       sleepTimer: sleepTimer)
     private var observations: Set<AnyCancellable> = []
     private var settingsWindow: NSWindow?
     private var status: NSStatusItem?
     private var statusMenu: NSMenu?
-    private var hotKey: HotKey?
+    private var sleepMenuItem: NSMenuItem?
+    private var hotKeys: HotKeys?
+    private lazy var sleepTimer = SleepTimer(player: player)
+    private let notifier = TrackNotifier()
     private var miniPlayerVisible = false
     private var settingsVisible = false
 
@@ -132,9 +140,22 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] _ in DispatchQueue.main.async { self?.updateMenuBarTitle() } }
             .store(in: &observations)
         preferences.$hotKey
-            .sink { [weak self] enabled in
-                self?.hotKey = enabled ? HotKey { [weak self] in self?.miniPlayer.toggle() } : nil
+            .combineLatest(preferences.$mediaHotKeys)
+            .sink { [weak self] miniPlayerKey, mediaKeys in self?.registerHotKeys(miniPlayer: miniPlayerKey, media: mediaKeys) }
+            .store(in: &observations)
+        preferences.$notifyOnTrackChange
+            .sink { [weak self] enabled in self?.notifier.enabled = enabled }
+            .store(in: &observations)
+        player.$playback
+            .sink { [weak self] playback in
+                guard let self else { return }
+                self.notifier.update(playback, suppressed: self.miniPlayerVisible) { [weak self] in
+                    self?.publisher.snapshot.cover
+                }
             }
+            .store(in: &observations)
+        sleepTimer.$mode
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.updateSleepMenu() } }
             .store(in: &observations)
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
             MainActor.assumeIsolated {
@@ -148,6 +169,21 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             preferences.didOnboard = true
             showSettings()
         }
+    }
+
+    private func registerHotKeys(miniPlayer showMiniPlayer: Bool, media: Bool) {
+        hotKeys = nil
+        var bindings: [HotKeys.Binding] = []
+        let modifiers = HotKeys.controlOption
+        if showMiniPlayer {
+            bindings.append(.init(keyCode: kVK_ANSI_P, modifiers: modifiers) { [weak self] in self?.miniPlayer.toggle() })
+        }
+        if media {
+            bindings.append(.init(keyCode: kVK_Space, modifiers: modifiers) { [weak self] in self?.perform(.toggle, step: 15) {} })
+            bindings.append(.init(keyCode: kVK_RightArrow, modifiers: modifiers) { [weak self] in self?.perform(.next, step: 15) {} })
+            bindings.append(.init(keyCode: kVK_LeftArrow, modifiers: modifiers) { [weak self] in self?.perform(.previous, step: 15) {} })
+        }
+        if !bindings.isEmpty { hotKeys = HotKeys(bindings) }
     }
 
     /// Poll Spotify often only while the user can see a TrackPin window.
@@ -217,12 +253,17 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             let menu = NSMenu()
             add("Мини-плеер", #selector(showMiniPlayer), to: menu)
             add("Настройки…", #selector(showSettings), to: menu, key: ",")
+            let sleep = NSMenuItem(title: "Таймер сна", action: nil, keyEquivalent: "")
+            sleep.submenu = NSMenu()
+            menu.addItem(sleep)
+            sleepMenuItem = sleep
             add("Открыть Spotify", #selector(openSpotify), to: menu)
             add("Обновить виджеты", #selector(reloadWidgets), to: menu)
             menu.addItem(.separator())
             menu.addItem(withTitle: "Выйти из TrackPin", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
             statusMenu = menu
             status = item
+            updateSleepMenu()
         }
         updateMenuBarTitle()
     }
@@ -250,6 +291,37 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         let frame = button.window?.convertToScreen(button.convert(button.bounds, to: nil)) ?? .zero
         miniPlayer.toggle(from: NSPoint(x: frame.midX, y: frame.minY))
     }
+
+    private func updateSleepMenu() {
+        guard let menu = sleepMenuItem?.submenu else { return }
+        menu.removeAllItems()
+        let current = sleepTimer.mode
+        for minutes in SleepTimer.presets {
+            let item = NSMenuItem(title: "\(minutes) минут", action: #selector(startSleep(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = minutes
+            item.state = current == .minutes(minutes) ? .on : .off
+            menu.addItem(item)
+        }
+        let end = NSMenuItem(title: "В конце трека", action: #selector(startSleep(_:)), keyEquivalent: "")
+        end.target = self
+        end.tag = 0
+        end.state = current == .endOfTrack ? .on : .off
+        menu.addItem(end)
+        if current != nil {
+            menu.addItem(.separator())
+            let off = NSMenuItem(title: "Выключить таймер", action: #selector(cancelSleep), keyEquivalent: "")
+            off.target = self
+            menu.addItem(off)
+        }
+        sleepMenuItem?.title = current.map { "Таймер сна: \($0.title.lowercased())" } ?? "Таймер сна"
+    }
+
+    @objc private func startSleep(_ sender: NSMenuItem) {
+        sleepTimer.start(sender.tag == 0 ? .endOfTrack : .minutes(sender.tag))
+    }
+
+    @objc private func cancelSleep() { sleepTimer.cancel() }
 
     private func add(_ title: String, _ action: Selector, to menu: NSMenu, key: String = "") {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)

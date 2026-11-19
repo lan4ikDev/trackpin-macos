@@ -28,6 +28,10 @@ progress, and has playback buttons that work right on the desktop.
   shuffle, repeat and volume. Space, arrows and Esc work while it is open. Size, background
   (blurred cover, widget theme or glass), cover shape, placement and the opening animation
   are configurable. ⌃⌥P toggles it from anywhere; the menu bar icon opens it with a left click.
+- **Global shortcuts**: ⌃⌥Space play/pause, ⌃⌥→ next, ⌃⌥← previous (can be turned off).
+- **Sleep timer**: pause after 15–90 minutes (the volume fades out first) or at the end of the
+  track, from the mini player's moon button or the menu bar menu.
+- **Track change notification** with the cover, off in the settings if you don't want it.
 - **Menu bar**: optional track title next to the icon, right click for the menu.
 
 ## How it works

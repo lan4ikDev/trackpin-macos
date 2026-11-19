@@ -233,6 +233,14 @@ private struct GeneralSettings: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            Section {
+                Toggle("Уведомление при смене трека", isOn: $preferences.notifyOnTrackChange)
+                Toggle("⌃⌥Пробел — пауза, ⌃⌥→ и ⌃⌥← — следующий и предыдущий трек", isOn: $preferences.mediaHotKeys)
+            } header: {
+                Text("Уведомления и горячие клавиши")
+            } footer: {
+                Text("Уведомление не показывается, пока открыт мини-плеер. Если оно не появляется, разреши уведомления TrackPin в «Системных настройках» → «Уведомления». Таймер сна — в мини-плеере (значок луны) и в меню иконки в строке меню.")
+            }
             Section("Поведение виджета") {
                 Toggle("Кнопка воспроизведения запускает Spotify, если он закрыт", isOn: $preferences.launchSpotifyOnPlay)
             }

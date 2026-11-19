@@ -1,29 +1,48 @@
 import Carbon.HIToolbox
 
-/// A system wide keyboard shortcut registered through the Carbon hot key API, which needs
+/// System wide keyboard shortcuts registered through the Carbon hot key API, which needs
 /// no Accessibility permission.
-final class HotKey {
-    private var reference: EventHotKeyRef?
-    private var handler: EventHandlerRef?
-    private let action: () -> Void
+final class HotKeys {
+    struct Binding {
+        let keyCode: Int
+        let modifiers: Int
+        let action: () -> Void
+    }
 
-    /// ⌃⌥P by default.
-    init(keyCode: UInt32 = UInt32(kVK_ANSI_P), modifiers: UInt32 = UInt32(controlKey | optionKey),
-         action: @escaping () -> Void) {
-        self.action = action
+    private var references: [EventHotKeyRef] = []
+    private var handler: EventHandlerRef?
+    private var actions: [UInt32: () -> Void] = [:]
+
+    init(_ bindings: [Binding]) {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
-            guard let context else { return OSStatus(eventNotHandledErr) }
-            let hotKey = Unmanaged<HotKey>.fromOpaque(context).takeUnretainedValue()
-            DispatchQueue.main.async { hotKey.action() }
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
+            guard let event, let context else { return OSStatus(eventNotHandledErr) }
+            var id = EventHotKeyID()
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                           nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
+            guard status == noErr else { return status }
+            let keys = Unmanaged<HotKeys>.fromOpaque(context).takeUnretainedValue()
+            guard let action = keys.actions[id.id] else { return OSStatus(eventNotHandledErr) }
+            DispatchQueue.main.async(execute: action)
             return noErr
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handler)
-        let id = EventHotKeyID(signature: OSType(0x54504E50), id: 1) // "TPNP"
-        RegisterEventHotKey(keyCode, modifiers, id, GetApplicationEventTarget(), 0, &reference)
+
+        for (index, binding) in bindings.enumerated() {
+            let id = UInt32(index + 1)
+            var reference: EventHotKeyRef?
+            let hotKeyID = EventHotKeyID(signature: OSType(0x54504E50), id: id) // "TPNP"
+            if RegisterEventHotKey(UInt32(binding.keyCode), UInt32(binding.modifiers), hotKeyID,
+                                   GetApplicationEventTarget(), 0, &reference) == noErr, let reference {
+                references.append(reference)
+                actions[id] = binding.action
+            }
+        }
     }
 
     deinit {
-        if let reference { UnregisterEventHotKey(reference) }
+        references.forEach { UnregisterEventHotKey($0) }
         if let handler { RemoveEventHandler(handler) }
     }
+
+    static let controlOption = controlKey | optionKey
 }

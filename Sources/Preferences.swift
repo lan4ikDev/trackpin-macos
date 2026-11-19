@@ -93,6 +93,13 @@ final class Preferences: ObservableObject {
     @Published var hotKey: Bool {
         didSet { defaults.set(hotKey, forKey: Key.hotKey) }
     }
+    /// ⌃⌥Space, ⌃⌥→ and ⌃⌥← control playback from anywhere.
+    @Published var mediaHotKeys: Bool {
+        didSet { defaults.set(mediaHotKeys, forKey: Key.mediaHotKeys) }
+    }
+    @Published var notifyOnTrackChange: Bool {
+        didSet { defaults.set(notifyOnTrackChange, forKey: Key.notifyOnTrackChange) }
+    }
     @Published var popupSize: PopupSize {
         didSet { defaults.set(popupSize.rawValue, forKey: Key.popupSize) }
     }
@@ -134,6 +141,8 @@ final class Preferences: ObservableObject {
         static let backgroundInterval = "backgroundInterval"
         static let menuBarTitle = "menuBarTitle"
         static let hotKey = "hotKey"
+        static let mediaHotKeys = "mediaHotKeys"
+        static let notifyOnTrackChange = "notifyOnTrackChange"
         static let popupSize = "popupSize"
         static let popupBackground = "popupBackground"
         static let popupPlacement = "popupPlacement"
@@ -165,6 +174,8 @@ final class Preferences: ObservableObject {
         backgroundInterval = Self.backgroundIntervals.contains(background) ? background : 30
         menuBarTitle = defaults.bool(forKey: Key.menuBarTitle)
         hotKey = defaults.object(forKey: Key.hotKey) as? Bool ?? true
+        mediaHotKeys = defaults.object(forKey: Key.mediaHotKeys) as? Bool ?? true
+        notifyOnTrackChange = defaults.object(forKey: Key.notifyOnTrackChange) as? Bool ?? true
         popupSize = defaults.string(forKey: Key.popupSize).flatMap(PopupSize.init(rawValue:)) ?? .regular
         popupBackground = defaults.string(forKey: Key.popupBackground).flatMap(PopupBackground.init(rawValue:)) ?? .artwork
         popupPlacement = defaults.string(forKey: Key.popupPlacement).flatMap(PopupPlacement.init(rawValue:)) ?? .cursor

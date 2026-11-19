@@ -22,7 +22,10 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     /// Room around the card for its shadow.
     static let margin: CGFloat = 28
 
-    init(player: Player, preferences: Preferences, publisher: WidgetPublisher) {
+    private let sleepTimer: SleepTimer
+
+    init(player: Player, preferences: Preferences, publisher: WidgetPublisher, sleepTimer: SleepTimer) {
+        self.sleepTimer = sleepTimer
         self.player = player
         self.preferences = preferences
         self.publisher = publisher
@@ -88,6 +91,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         panel.animationBehavior = .none
         panel.delegate = self
         let view = MiniPlayerView(player: player, preferences: preferences, publisher: publisher, model: model,
+                                  sleepTimer: sleepTimer,
                                   close: { [weak self] in self?.close() },
                                   showSettings: { [weak self] in self?.close(); self?.showSettings() })
         let hosting = NSHostingView(rootView: view)
@@ -175,6 +179,7 @@ struct MiniPlayerView: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var publisher: WidgetPublisher
     @ObservedObject var model: MiniPlayerModel
+    @ObservedObject var sleepTimer: SleepTimer
     let close: () -> Void
     let showSettings: () -> Void
 
@@ -213,7 +218,7 @@ struct MiniPlayerView: View {
     @ViewBuilder private var card: some View {
         switch player.playback {
         case let .track(track):
-            TrackCard(player: player, preferences: preferences, publisher: publisher, track: track,
+            TrackCard(player: player, preferences: preferences, publisher: publisher, sleepTimer: sleepTimer, track: track,
                       accent: colors.accent, width: width, padding: padding, corner: corner,
                       hovering: hovering, close: close, showSettings: showSettings)
         case .closed:
@@ -284,6 +289,7 @@ private struct TrackCard: View {
     @ObservedObject var player: Player
     @ObservedObject var preferences: Preferences
     @ObservedObject var publisher: WidgetPublisher
+    @ObservedObject var sleepTimer: SleepTimer
     let track: Track
     let accent: Color
     let width: CGFloat
@@ -299,6 +305,7 @@ private struct TrackCard: View {
         VStack(alignment: .leading, spacing: 12) {
             cover
             info
+            if sleepTimer.isActive { sleepStatus }
             ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime)
             controls
             if preferences.popupShowsVolume, let volume = track.volume {
@@ -345,14 +352,63 @@ private struct TrackCard: View {
         .overlay(alignment: .top) {
             HStack(spacing: 6) {
                 CircleButton(icon: "gearshape.fill", label: "Настройки", action: showSettings)
+                sleepMenu
                 Spacer()
                 CircleButton(icon: "arrow.up.forward.app.fill", label: "Открыть в Spotify", action: player.openSpotify)
                 CircleButton(icon: "xmark", label: "Закрыть", action: close)
             }
             .padding(8)
-            .opacity(hovering ? 1 : 0)
+            .opacity(hovering || sleepTimer.isActive ? 1 : 0)
         }
         .accessibilityHidden(true)
+    }
+
+    private var sleepMenu: some View {
+        Menu {
+            ForEach(SleepTimer.presets, id: \.self) { minutes in
+                Button("\(minutes) минут") { sleepTimer.start(.minutes(minutes)) }
+            }
+            Button("В конце трека") { sleepTimer.start(.endOfTrack) }
+            if sleepTimer.isActive {
+                Divider()
+                Button("Выключить таймер") { sleepTimer.cancel() }
+            }
+        } label: {
+            Image(systemName: sleepTimer.isActive ? "moon.zzz.fill" : "moon.fill")
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(sleepTimer.isActive ? accent.opacity(0.9) : .black.opacity(0.45)))
+                .foregroundStyle(sleepTimer.isActive ? Color.black.opacity(0.85) : .white.opacity(0.9))
+                .contentShape(Circle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Таймер сна")
+        .accessibilityLabel("Таймер сна")
+    }
+
+    private var sleepStatus: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 6) {
+                Image(systemName: "moon.zzz.fill")
+                if let deadline = sleepTimer.deadline {
+                    Text("Пауза через \(TrackPinCard.time(max(0, deadline.timeIntervalSince(context.date))))")
+                } else {
+                    Text("Пауза в конце трека")
+                }
+                Spacer(minLength: 0)
+                Button("Отменить") { withAnimation { sleepTimer.cancel() } }
+                    .foregroundStyle(accent)
+            }
+            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+            .foregroundStyle(.white.opacity(0.75))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(.white.opacity(0.1)))
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private var info: some View {

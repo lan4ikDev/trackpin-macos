@@ -440,11 +440,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             case "open":
                 switch preferences.tapAction {
                 case .spotify: player.openPlayer()
-                case .player: miniPlayer.show(from: NSEvent.mouseLocation)
+                case .player: miniPlayer.toggleFromWidget(at: NSEvent.mouseLocation)
                 case .settings: showSettings()
                 }
             case "settings": showSettings()
-            case "player": miniPlayer.show(from: NSEvent.mouseLocation)
+            case "player": miniPlayer.toggleFromWidget(at: NSEvent.mouseLocation)
             case "toggle": perform(.toggle, step: 15) {}
             case "rewind": perform(.rewind, step: preferences.style.seekStep) {}
             case "forward": perform(.forward, step: preferences.style.seekStep) {}

@@ -73,8 +73,23 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         DispatchQueue.main.async { withAnimation(animation) { self.model.presented = true } }
     }
 
+    /// When the mini player last started closing.
+    private var closedAt = Date.distantPast
+
+    /// A click on the widget: opens the mini player, or closes it when it is open. A click
+    /// on the widget first takes the focus from the open mini player, which then closes on its
+    /// own just before the widget's request arrives; that request must not reopen it.
+    func toggleFromWidget(at point: NSPoint) {
+        if isVisible && closing == nil {
+            close()
+        } else if Date().timeIntervalSince(closedAt) > 0.8 {
+            show(from: point)
+        }
+    }
+
     func close() {
         guard let panel, panel.isVisible, closing == nil else { return }
+        closedAt = Date()
         let animated = preferences.popupAnimated
         withAnimation(animated ? .easeInOut(duration: 0.22) : nil) { model.presented = false }
         let work = DispatchWorkItem { [weak self] in

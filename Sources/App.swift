@@ -6,16 +6,7 @@ import SwiftUI
 enum TrackPinApp {
     @MainActor static func main() {
         if CommandLine.arguments.contains("--self-test") {
-            let sample = #"{"spotify:track:001", "One, \"Two\"", "Artist", "https://i.scdn.co/image/test", 228000, 72.5, true}"#
-            guard case let .track(track) = SpotifyBridge.decode(sample),
-                  track.title == "One, \"Two\"",
-                  track.position == 72.5, track.duration == 228, track.playing,
-                  SpotifyBridge.decode("{}") == .idle,
-                  SpotifyBridge.decode("\"closed\"\n") == .closed,
-                  SpotifyBridge.decode("bad input") == .unavailable else {
-                fatalError("Playback data could not be decoded")
-            }
-            print("Playback decoder checks passed")
+            SelfTest.run()
             return
         }
         let app = NSApplication.shared
@@ -26,17 +17,39 @@ enum TrackPinApp {
     }
 }
 
-final class Preferences: ObservableObject {
-    @Published var theme: WidgetTheme {
-        didSet { UserDefaults.standard.set(theme.rawValue, forKey: "theme") }
-    }
-    @Published var showTime: Bool {
-        didSet { UserDefaults.standard.set(showTime, forKey: "showTime") }
-    }
+enum SelfTest {
+    static func run() {
+        let sample = #"{"spotify:track:001", "One, \"Two\"", "Artist", "https://i.scdn.co/image/test", 228000, 72.5, true}"#
+        guard case let .track(track) = SpotifyBridge.decode(sample),
+              track.title == "One, \"Two\"",
+              track.position == 72.5, track.duration == 228, track.playing,
+              SpotifyBridge.decode("{}") == .idle,
+              SpotifyBridge.decode("\"closed\"\n") == .closed,
+              SpotifyBridge.decode("bad input") == .unavailable else {
+            fatalError("Playback data could not be decoded")
+        }
 
-    init() {
-        theme = WidgetTheme(rawValue: UserDefaults.standard.string(forKey: "theme") ?? "") ?? .graphite
-        showTime = UserDefaults.standard.object(forKey: "showTime") as? Bool ?? true
+        let get = WidgetTransport.Request.snapshot
+        let skip = WidgetTransport.Request.command(.forward, step: 15)
+        guard WidgetTransport.Request(line: get.line) == get,
+              WidgetTransport.Request(line: skip.line) == skip,
+              WidgetTransport.Request(line: "NEEDLE wrong-token GET\n") == nil,
+              WidgetTransport.Request(line: "NEEDLE \(TrackPinBuild.token) DO forward 9999\n") == nil else {
+            fatalError("Widget requests could not be parsed")
+        }
+
+        var style = WidgetStyle()
+        style.theme = .ocean
+        style.controls = .full
+        guard let data = try? JSONEncoder().encode(WidgetSnapshot(playback: .idle, sampledAt: .now, cover: nil,
+                                                                  palette: nil, style: style)),
+              let decoded = try? JSONDecoder().decode(WidgetSnapshot.self, from: data),
+              decoded.style == style,
+              let partial = try? JSONDecoder().decode(WidgetStyle.self, from: Data(#"{"theme":"plum","seekStep":7}"#.utf8)),
+              partial.theme == .plum, partial.seekStep == 15, partial.showTime else {
+            fatalError("Widget style could not be decoded")
+        }
+        print("Self-test passed")
     }
 }
 
@@ -44,56 +57,115 @@ final class Preferences: ObservableObject {
 private final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
     private lazy var player = Player(demo: CommandLine.arguments.contains("--demo"))
-    private var publisher: WidgetPublisher?
-    private var observation: AnyCancellable?
+    private let publisher = WidgetPublisher()
+    private var observations: Set<AnyCancellable> = []
     private var playerWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var status: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        publisher = WidgetPublisher()
-        observation = player.$playback
-            .combineLatest(preferences.$theme, preferences.$showTime)
-            .sink { [weak self] playback, theme, showTime in
-                self?.publisher?.publish(playback, theme: theme, showTime: showTime)
-            }
+        player.interval = preferences.refreshInterval
+        publisher.onCommand = { [weak self] action, step, done in
+            guard let self else { done(); return }
+            self.perform(action, step: step, done: done)
+        }
+        player.$playback
+            .combineLatest(preferences.$style)
+            .sink { [weak self] playback, style in self?.publisher.publish(playback, style: style) }
+            .store(in: &observations)
+        preferences.$refreshInterval
+            .sink { [weak self] interval in self?.player.interval = interval }
+            .store(in: &observations)
+        preferences.$showMenuBarIcon
+            .sink { [weak self] visible in self?.setMenuBarIcon(visible) }
+            .store(in: &observations)
 
+        if !preferences.didOnboard {
+            preferences.didOnboard = true
+            showSettings()
+        }
+    }
+
+    /// Opening the app again (from Finder or Spotlight) shows the settings, which is the
+    /// only way back in when the menu bar icon is hidden.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettings()
+        return false
+    }
+
+    // MARK: Commands
+
+    private func perform(_ action: PlayerAction, step: Int, done: @escaping () -> Void) {
+        if action == .toggle, preferences.launchSpotifyOnPlay, player.playback == .closed {
+            player.openSpotify()
+            done()
+            return
+        }
+        player.send(PlayerCommand(action, step: step)) { [weak self] playback in
+            guard let self else { done(); return }
+            // Publish right away so the reply and the widget reload already show the new state.
+            self.publisher.publish(playback, style: self.preferences.style)
+            done()
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "needle-spotify" {
+            switch url.host {
+            case "open":
+                switch preferences.tapAction {
+                case .spotify: player.openSpotify()
+                case .player: showPlayer()
+                case .settings: showSettings()
+                }
+            case "settings": showSettings()
+            case "player": showPlayer()
+            case "toggle": perform(.toggle, step: 15) {}
+            case "rewind": perform(.rewind, step: preferences.style.seekStep) {}
+            case "forward": perform(.forward, step: preferences.style.seekStep) {}
+            case "previous": perform(.previous, step: 15) {}
+            case "next": perform(.next, step: 15) {}
+            default: break
+            }
+        }
+    }
+
+    // MARK: Menu bar
+
+    private func setMenuBarIcon(_ visible: Bool) {
+        guard visible else {
+            if let status { NSStatusBar.system.removeStatusItem(status) }
+            status = nil
+            return
+        }
+        guard status == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "TrackPin")
         let menu = NSMenu()
         add("Открыть плеер", #selector(showPlayer), to: menu)
-        add("Настройки…", #selector(showSettings), to: menu)
+        add("Настройки…", #selector(showSettings), to: menu, key: ",")
         add("Открыть Spotify", #selector(openSpotify), to: menu)
+        add("Обновить виджеты", #selector(reloadWidgets), to: menu)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Выйти из TrackPin", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         status = item
     }
 
-    private func add(_ title: String, _ action: Selector, to menu: NSMenu) {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+    private func add(_ title: String, _ action: Selector, to menu: NSMenu, key: String = "") {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         menu.addItem(item)
     }
 
-    func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "needle-spotify" {
-            switch url.host {
-            case "toggle": player.send(.toggle)
-            case "rewind": player.send(.skip(-15))
-            case "forward": player.send(.skip(15))
-            case "previous": player.send(.previous)
-            case "next": player.send(.next)
-            default: break
-            }
-        }
-    }
-
     @objc private func openSpotify() { player.openSpotify() }
+    @objc private func reloadWidgets() { publisher.reloadWidgets() }
+
+    // MARK: Windows
 
     @objc private func showPlayer() {
         if playerWindow == nil {
-            let view = PlayerWindowView(player: player, preferences: preferences) { [weak self] in
+            let view = PlayerWindowView(player: player, preferences: preferences, publisher: publisher) { [weak self] in
                 self?.showSettings()
             }
             playerWindow = makeWindow("Плеер TrackPin", size: NSSize(width: 372, height: 166), content: view)
@@ -103,8 +175,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSettings() {
         if settingsWindow == nil {
-            let view = SettingsView(preferences: preferences)
-            settingsWindow = makeWindow("Настройки TrackPin", size: NSSize(width: 375, height: 162), content: view)
+            let view = SettingsView(preferences: preferences, player: player, publisher: publisher)
+            settingsWindow = makeWindow("Настройки TrackPin", size: NSSize(width: 820, height: 560), content: view)
         }
         present(settingsWindow)
     }
@@ -131,29 +203,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 private struct PlayerWindowView: View {
     @ObservedObject var player: Player
     @ObservedObject var preferences: Preferences
+    @ObservedObject var publisher: WidgetPublisher
     let showSettings: () -> Void
 
     var body: some View {
-        WidgetView(player: player, theme: preferences.theme, showTime: preferences.showTime,
-                   showSettings: showSettings)
-    }
-}
-
-private struct SettingsView: View {
-    @ObservedObject var preferences: Preferences
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            Picker("Тема", selection: $preferences.theme) {
-                ForEach(WidgetTheme.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            Toggle("Показывать время трека", isOn: $preferences.showTime)
-            Text("Чтобы добавить TrackPin, щёлкни по рабочему столу правой кнопкой мыши и выбери «Изменить виджеты». Размер выбирается там же.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(20)
+        // The player window is always dark; light themes fall back to graphite.
+        let themed = preferences.style.theme.colors(palette: publisher.snapshot.palette, scheme: .dark)
+        let colors = themed.dark ? themed : WidgetTheme.graphite.colors(palette: nil, scheme: .dark)
+        WidgetView(player: player, colors: colors, showTime: preferences.style.showTime, showSettings: showSettings)
     }
 }

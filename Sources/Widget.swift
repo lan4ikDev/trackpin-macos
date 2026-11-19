@@ -3,7 +3,7 @@ import SwiftUI
 
 struct WidgetView: View {
     @ObservedObject var player: Player
-    let theme: WidgetTheme
+    let colors: ThemeColors
     let showTime: Bool
     let showSettings: () -> Void
 
@@ -11,7 +11,7 @@ struct WidgetView: View {
         VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Label("Spotify", systemImage: "waveform")
-                    .foregroundStyle(theme.accent)
+                    .foregroundStyle(colors.accent)
                     .font(.system(size: 11, weight: .semibold))
                 if player.demo {
                     Text("ДЕМО").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
@@ -25,7 +25,7 @@ struct WidgetView: View {
             }
             switch player.playback {
             case let .track(track):
-                TrackView(player: player, track: track, accent: theme.accent, showTime: showTime)
+                TrackView(player: player, track: track, accent: colors.accent, showTime: showTime)
                     .id(track.id)
             case .closed:
                 empty("Открой Spotify", detail: "Запусти трек в приложении.", action: "Открыть Spotify", perform: player.openSpotify)
@@ -45,7 +45,7 @@ struct WidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             RoundedRectangle(cornerRadius: 24)
-                .fill(LinearGradient(colors: theme.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: colors.background, startPoint: .topLeading, endPoint: .bottomTrailing))
         }
         .overlay {
             RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.14), lineWidth: 1)
@@ -63,7 +63,7 @@ struct WidgetView: View {
             Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button(action, action: perform)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(theme.accent)
+                .foregroundStyle(colors.accent)
                 .padding(.top, 4)
             Spacer(minLength: 0)
         }

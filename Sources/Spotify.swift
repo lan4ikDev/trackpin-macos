@@ -4,6 +4,16 @@ import SwiftUI
 enum PlayerCommand {
     case previous, toggle, next, skip(Int), seek(Double, String)
 
+    init(_ action: PlayerAction, step: Int) {
+        switch action {
+        case .toggle: self = .toggle
+        case .next: self = .next
+        case .previous: self = .previous
+        case .rewind: self = .skip(-step)
+        case .forward: self = .skip(step)
+        }
+    }
+
     var script: String {
         switch self {
         case .previous: return "previous track"
@@ -129,11 +139,17 @@ final class SpotifyBridge {
 }
 
 final class Player: ObservableObject {
+    typealias Completion = (Playback) -> Void
+
     @Published private(set) var playback: Playback = .closed
+    /// Seconds between two reads of the Spotify state.
+    var interval: TimeInterval = 1 {
+        didSet { if interval != oldValue { schedule() } }
+    }
     private let bridge = SpotifyBridge()
     private var timer: Timer?
     private var busy = false
-    private var pending: [PlayerCommand] = []
+    private var pending: [(command: PlayerCommand, completion: Completion?)] = []
     let demo: Bool
 
     init(demo: Bool = false) {
@@ -143,12 +159,19 @@ final class Player: ObservableObject {
                                     artwork: nil, duration: 228, position: 72, playing: true))
         }
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.refresh() }
+        schedule()
     }
 
     deinit { timer?.invalidate() }
 
-    func send(_ command: PlayerCommand) {
+    private func schedule() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: max(0.5, interval), repeats: true) { [weak self] _ in self?.refresh() }
+        timer?.tolerance = interval * 0.2
+    }
+
+    /// Queues a command. `completion` receives the playback state read right after the command ran.
+    func send(_ command: PlayerCommand, completion: Completion? = nil) {
         if demo, case var .track(track) = playback {
             switch command {
             case .toggle: track.playing.toggle()
@@ -158,12 +181,13 @@ final class Player: ObservableObject {
             case let .seek(seconds, _): track.position = seconds
             }
             playback = .track(track)
+            completion?(playback)
             return
         }
-        if case .seek = command, let last = pending.last, case .seek = last {
+        if case .seek = command, let last = pending.last, case .seek = last.command, last.completion == nil {
             pending.removeLast()
         }
-        pending.append(command)
+        pending.append((command, completion))
         refresh()
     }
 
@@ -182,7 +206,7 @@ final class Player: ObservableObject {
     private func refresh() {
         if demo {
             if case var .track(track) = playback, track.playing {
-                track.position = min(track.duration, track.position + 1)
+                track.position = min(track.duration, track.position + interval)
                 if track.position == track.duration { track.playing = false }
                 playback = .track(track)
             }
@@ -190,11 +214,12 @@ final class Player: ObservableObject {
         }
         guard !busy else { return }
         busy = true
-        let command = pending.isEmpty ? nil : pending.removeFirst()
-        bridge.read(command: command) { [weak self] result in
+        let next = pending.isEmpty ? nil : pending.removeFirst()
+        bridge.read(command: next?.command) { [weak self] result in
             guard let self else { return }
             if self.pending.isEmpty { self.playback = result }
             self.busy = false
+            next?.completion?(result)
             if !self.pending.isEmpty { self.refresh() }
         }
     }

@@ -12,6 +12,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     private let player: Player
     private let preferences: Preferences
     private let publisher: WidgetPublisher
+    private let history: PlayHistory
     private let model = MiniPlayerModel()
     private let lyrics = LyricsStore()
     private var panel: MiniPanel?
@@ -25,16 +26,26 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
 
     private let sleepTimer: SleepTimer
 
-    init(player: Player, preferences: Preferences, publisher: WidgetPublisher, sleepTimer: SleepTimer) {
+    init(player: Player, preferences: Preferences, publisher: WidgetPublisher, history: PlayHistory, sleepTimer: SleepTimer) {
         self.sleepTimer = sleepTimer
         self.player = player
         self.preferences = preferences
         self.publisher = publisher
+        self.history = history
         super.init()
-        // The card's height depends on these settings: resize an open panel when they change.
+        // The card's height depends on these settings and on the history list: resize an open
+        // panel when they change.
         preferences.objectWillChange
+            .merge(with: model.$showsHistory.removeDuplicates().map { _ in () }.eraseToAnyPublisher())
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.fitPanel() }
+            .store(in: &observations)
+        // The list grows up to five rows, then scrolls.
+        history.$entries
+            .map { min($0.count, 5) }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.fitPanel() }
             .store(in: &observations)
     }
 
@@ -91,7 +102,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.animationBehavior = .none
         panel.delegate = self
-        let view = MiniPlayerView(player: player, preferences: preferences, publisher: publisher, model: model,
+        let view = MiniPlayerView(player: player, preferences: preferences, publisher: publisher, history: history, model: model,
                                   sleepTimer: sleepTimer,
                                   lyrics: lyrics,
                                   close: { [weak self] in self?.close() },
@@ -131,7 +142,8 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         return frame
     }
 
-    /// Keyboard: space plays or pauses, ←/→ seek, ↑/↓ change the volume, Esc closes.
+    /// Keyboard: space plays or pauses, ←/→ seek, ↑/↓ change the volume, H shows the history,
+    /// Esc closes.
     private func handle(_ event: NSEvent) -> Bool {
         let step = preferences.style.seekStep
         switch Int(event.keyCode) {
@@ -142,6 +154,8 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
             guard let volume = player.playback.currentTrack?.volume else { return false }
             player.send(.volume(volume + (event.keyCode == 126 ? 10 : -10)))
         case 53: close()
+        case 4 where preferences.keepHistory && event.modifierFlags.intersection([.command, .control, .option]).isEmpty:
+            withAnimation(.easeInOut(duration: 0.2)) { model.showsHistory.toggle() }
         default:
             if event.charactersIgnoringModifiers == "," && event.modifierFlags.contains(.command) {
                 close()
@@ -170,6 +184,8 @@ final class MiniPlayerModel: ObservableObject {
     @Published var presented = false
     @Published var anchor: UnitPoint = .center
     @Published var onScreen = true
+    /// The recently played list under the controls.
+    @Published var showsHistory = false
 }
 
 final class MiniPanel: NSPanel {
@@ -187,6 +203,7 @@ struct MiniPlayerView: View {
     @ObservedObject var player: Player
     @ObservedObject var preferences: Preferences
     @ObservedObject var publisher: WidgetPublisher
+    @ObservedObject var history: PlayHistory
     @ObservedObject var model: MiniPlayerModel
     @ObservedObject var sleepTimer: SleepTimer
     let lyrics: LyricsStore
@@ -228,8 +245,9 @@ struct MiniPlayerView: View {
     @ViewBuilder private var card: some View {
         switch player.playback {
         case let .track(track):
-            TrackCard(player: player, preferences: preferences, publisher: publisher, sleepTimer: sleepTimer, lyrics: lyrics, track: track,
-                      accent: colors.accent, width: width, padding: padding, corner: corner,
+            TrackCard(player: player, preferences: preferences, publisher: publisher, sleepTimer: sleepTimer,
+                      lyrics: lyrics, history: history, model: model,
+                      track: track, accent: colors.accent, width: width, padding: padding, corner: corner,
                       hovering: hovering, animating: model.presented && model.onScreen && track.playing,
                       close: close, showSettings: showSettings)
         case .closed:
@@ -302,6 +320,8 @@ private struct TrackCard: View {
     @ObservedObject var publisher: WidgetPublisher
     @ObservedObject var sleepTimer: SleepTimer
     let lyrics: LyricsStore
+    @ObservedObject var history: PlayHistory
+    @ObservedObject var model: MiniPlayerModel
     let track: Track
     let accent: Color
     let width: CGFloat
@@ -334,6 +354,10 @@ private struct TrackCard: View {
             }
             if preferences.popupShowsVolume, let volume = track.volume {
                 VolumeBar(player: player, volume: volume, accent: accent)
+            }
+            if model.showsHistory && preferences.keepHistory {
+                HistoryList(history: history, current: track, accent: accent, width: width - padding * 2)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .padding(padding)
@@ -475,6 +499,20 @@ private struct TrackCard: View {
             .help(preferences.popupShowsLyrics ? "Скрыть текст песни" : "Показать текст песни")
             .accessibilityLabel("Текст песни")
             .accessibilityAddTraits(preferences.popupShowsLyrics ? .isSelected : [])
+            if preferences.keepHistory {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { model.showsHistory.toggle() }
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(model.showsHistory ? accent : .white.opacity(0.75))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .help("Недавно играли (H)")
+                .accessibilityLabel("Недавно играли")
+                .accessibilityAddTraits(model.showsHistory ? .isSelected : [])
+            }
             if let link = track.webLink {
                 Button {
                     NSPasteboard.general.clearContents()
@@ -555,6 +593,132 @@ private struct TrackCard: View {
         .accessibilityLabel(label)
         .accessibilityAddTraits(active ? .isSelected : [])
         .help(label)
+    }
+}
+
+/// Tracks TrackPin saw playing, newest first. A click plays a track again.
+private struct HistoryList: View {
+    @ObservedObject var history: PlayHistory
+    let current: Track
+    let accent: Color
+    let width: CGFloat
+
+    private static let rowHeight: CGFloat = 44
+    private static let visibleRows = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Недавно играли")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.7))
+                Spacer()
+                if !history.entries.isEmpty {
+                    Button("Очистить") { withAnimation { history.clear() } }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .help("Очистить историю")
+                }
+            }
+            if history.entries.isEmpty {
+                Text("Здесь появятся треки, которые ты слушаешь, пока TrackPin запущен.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 6)
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(history.entries.enumerated()), id: \.element.id) { index, entry in
+                            HistoryRow(history: history, entry: entry,
+                                       nowPlaying: index == 0 && entry.trackID == current.id && current.playing,
+                                       accent: accent)
+                                .frame(height: Self.rowHeight)
+                        }
+                    }
+                }
+                .frame(width: width, height: Self.rowHeight * CGFloat(min(history.entries.count, Self.visibleRows)))
+            }
+        }
+        .padding(.top, 2)
+    }
+}
+
+private struct HistoryRow: View {
+    @ObservedObject var history: PlayHistory
+    let entry: HistoryEntry
+    let nowPlaying: Bool
+    let accent: Color
+
+    @State private var hovering = false
+
+    var body: some View {
+        Button { history.play(entry) } label: {
+            HStack(spacing: 10) {
+                AsyncImage(url: entry.artwork) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(accent)
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    Text(entry.artist).font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if nowPlaying {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(accent)
+                } else if hovering && entry.playable {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.8))
+                } else {
+                    Text(Self.age(of: entry.playedAt))
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+            }
+            .padding(.horizontal, 6)
+            .frame(maxHeight: .infinity)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(hovering ? 0.08 : 0)))
+            .contentShape(Rectangle())
+        }
+        .disabled(!entry.playable)
+        .onHover { hovering = $0 }
+        .help(entry.playable ? "Включить «\(entry.title)»" : entry.title)
+        .accessibilityLabel("\(entry.title), \(entry.artist)")
+        .contextMenu {
+            if entry.playable {
+                Button("Включить") { history.play(entry) }
+            }
+            if let link = entry.webLink {
+                Button("Скопировать ссылку") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(link.absoluteString, forType: .string)
+                }
+            }
+            Divider()
+            Button("Удалить из истории") { withAnimation { history.remove(entry) } }
+        }
+    }
+
+    /// "сейчас", "5 мин", "3 ч", "2 дн".
+    static func age(of date: Date) -> String {
+        let seconds = max(0, Date().timeIntervalSince(date))
+        switch seconds {
+        case ..<60: return "сейчас"
+        case ..<3600: return "\(Int(seconds / 60)) мин"
+        case ..<86400: return "\(Int(seconds / 3600)) ч"
+        default: return "\(Int(seconds / 86400)) дн"
+        }
     }
 }
 

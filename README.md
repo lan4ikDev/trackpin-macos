@@ -41,6 +41,11 @@ progress, and has playback buttons that work right on the desktop.
   account) scroll along with the track, the current line is highlighted and a click on a line
   seeks to it. Falls back to plain text when there are no timestamps. Lyrics are cached in
   `~/Library/Caches`; the quote button in the mini player or the settings turn them off.
+- **Play history**: the clock button in the mini player (or H) lists the tracks TrackPin saw
+  playing, newest first, with covers. A click plays a track again (no Premium needed), the
+  context menu copies its link or removes it. The last 100 tracks are kept in
+  `~/Library/Application Support/TrackPin/history.json`; recording can be turned off and the
+  list cleared in the settings.
 - **Menu bar**: optional track title next to the icon, right click for the menu.
 
 ## How it works

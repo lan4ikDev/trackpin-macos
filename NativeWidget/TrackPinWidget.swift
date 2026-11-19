@@ -152,7 +152,7 @@ struct TrackPinWidget: Widget {
         AppIntentConfiguration(kind: WidgetTransport.kind, intent: TrackPinWidgetIntent.self, provider: Provider()) { entry in
             PlayerEntryView(entry: entry)
         }
-        .configurationDisplayName("Spotify")
+        .configurationDisplayName("Плеер")
         .description("Обложка, прогресс и кнопки управления треком.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()

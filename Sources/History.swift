@@ -119,7 +119,7 @@ enum SpotifyScript {
         guard SpotifyBridge.isRunning, uri.hasPrefix("spotify:") else { return }
         let source = """
         with timeout of 3 seconds
-            tell application id "\(SpotifyBridge.bundleIdentifier)" to play track \(SpotifyBridge.scriptLiteral(uri))
+            tell application id "\(SpotifyBridge.bundleIdentifier)" to play track \(AppleScript.literal(uri))
         end timeout
         """
         queue.async {

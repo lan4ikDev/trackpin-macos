@@ -1,5 +1,31 @@
 import Foundation
 
+/// A music player TrackPin can show and control.
+enum MusicSource: String, Codable, CaseIterable, Identifiable {
+    case spotify, appleMusic, yandexApp, yandexWeb
+
+    var id: String { rawValue }
+
+    /// Short name for the widget header and messages.
+    var title: String {
+        switch self {
+        case .spotify: "Spotify"
+        case .appleMusic: "Apple Music"
+        case .yandexApp, .yandexWeb: "Яндекс Музыка"
+        }
+    }
+
+    /// Name for the settings, where the two Yandex routes must differ.
+    var settingsTitle: String {
+        switch self {
+        case .spotify: "Spotify"
+        case .appleMusic: "Apple Music"
+        case .yandexApp: "Яндекс Музыка (приложение)"
+        case .yandexWeb: "Яндекс Музыка (в браузере)"
+        }
+    }
+}
+
 struct Track: Codable, Equatable {
     let id: String
     let title: String
@@ -14,11 +40,15 @@ struct Track: Codable, Equatable {
     var shuffling: Bool? = nil
     var repeating: Bool? = nil
 
-    /// A link to the track on open.spotify.com, for `spotify:track:<id>` identifiers.
+    /// A link to the track on the web, for `spotify:track:<id>` and `yandex:track:<id>` identifiers.
     var webLink: URL? {
         let parts = id.split(separator: ":")
-        guard parts.count == 3, parts[0] == "spotify" else { return nil }
-        return URL(string: "https://open.spotify.com/\(parts[1])/\(parts[2])")
+        guard parts.count == 3 else { return nil }
+        switch parts[0] {
+        case "spotify": return URL(string: "https://open.spotify.com/\(parts[1])/\(parts[2])")
+        case "yandex" where parts[1] == "track": return URL(string: "https://music.yandex.ru/track/\(parts[2])")
+        default: return nil
+        }
     }
 }
 
@@ -40,6 +70,10 @@ struct WidgetSnapshot: Codable, Equatable {
     var cover: Data?
     var palette: ArtworkPalette?
     var style: WidgetStyle
+    /// The player the playback comes from. Missing in snapshots of older versions: Spotify.
+    var source: MusicSource? = nil
+
+    var sourceTitle: String { (source ?? .spotify).title }
 
     /// `sampledAt == .distantPast` means the host app has never answered.
     static let offline = WidgetSnapshot(playback: .closed, sampledAt: .distantPast,

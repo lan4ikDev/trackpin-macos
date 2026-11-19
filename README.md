@@ -2,14 +2,14 @@
 
 <img src="Assets/TrackPin.png" alt="TrackPin icon" width="112">
 
-A native macOS desktop widget for the Spotify desktop app. The widget lives on the desktop
+A native macOS desktop widget for Spotify, Apple Music and Yandex Music. The widget lives on the desktop
 like any other WidgetKit widget (macOS 14 Sonoma or later): you drag it around, resize it from
 the widget gallery and edit it with a right click. It shows the album cover, the track and its
 progress, and has playback buttons that work right on the desktop.
 
 ## What is inside
 
-- **Spotify widget** in three sizes. Small: cover, track, progress and three buttons. Medium:
+- **Player widget** in three sizes. Small: cover, track, progress and three buttons. Medium:
   cover, track, progress and up to five buttons. Large: a big cover with everything below it.
 - **Cover widget** (small and large): the album cover edge to edge with a play/pause button.
 - **Interactive buttons** built with App Intents: previous, play/pause, next, and rewind / fast
@@ -25,7 +25,8 @@ progress, and has playback buttons that work right on the desktop.
   - per widget overrides of the theme and buttons (right click on the widget → Edit Widget);
   - open at login, menu bar icon, what a click on the widget opens, whether play starts Spotify,
     how often Spotify is polled;
-  - Spotify and widget status, Automation permission shortcut, help for adding the widget.
+  - the music source (automatic or a fixed player);
+  - player and widget status, permission shortcuts, help for adding the widget.
 - **Mini player**: a click on the widget opens a vertical card that grows out of the click
   point. Most of it is the album cover, below it the track, a seek bar, playback buttons,
   shuffle, repeat and volume. Space, arrows and Esc work while it is open. Size, background
@@ -48,22 +49,41 @@ progress, and has playback buttons that work right on the desktop.
   list cleared in the settings.
 - **Menu bar**: optional track title next to the icon, right click for the menu.
 
+## Players
+
+| Player | How TrackPin reads it | Permission |
+| --- | --- | --- |
+| Spotify | AppleScript, `com.spotify.client.PlaybackStateChanged` | Automation → Spotify |
+| Apple Music | AppleScript, `com.apple.Music.playerInfo`; the cover is read as data once per track | Automation → Music |
+| Yandex Music app | Accessibility API: the player bar's buttons, links, timecodes and sliders | Accessibility |
+| Yandex Music in a browser | AppleScript `execute javascript` in the music.yandex.ru tab (`externalAPI`, then Media Session and `<audio>`) | Automation → the browser, plus "Allow JavaScript from Apple Events" |
+
+Since macOS 15.4 the system Now Playing information (MediaRemote) is closed to other apps, and
+Yandex Music has no AppleScript support, hence the two routes above. Both depend on how the
+Yandex player bar is built and may need an update after a Yandex redesign. Supported browsers:
+Safari, Chrome, Yandex Browser, Arc, Edge, Brave, Vivaldi and Chromium.
+
+In automatic mode TrackPin follows whichever player is playing: Spotify and Music announce it
+themselves; the Yandex app (and browser tabs, if that option is on) is checked at most every
+5 seconds while nothing else plays.
+
 ## How it works
 
 WidgetKit extensions are sandboxed and cannot send Apple Events, and widgets are not redrawn
 in real time. So the TrackPin app does the work and the widget only displays it:
 
-1. The app reads Spotify through in-process AppleScript (`NSAppleScript`, compiled once). It
-   reads right away when Spotify posts `PlaybackStateChanged` (play, pause, next track) and
+1. The app reads the player through in-process AppleScript (`NSAppleScript`, compiled once) or
+   the Accessibility API. It reads right away when the player posts a notification (play, pause, next track) and
    polls only while a TrackPin window is visible (every 1, 2 or 5 seconds) or, in the
    background, every 30 s or 2 min while a track plays (configurable, can be off). Nothing is
-   polled while Spotify is paused or closed. It downloads the cover, samples its colors and
+   polled while the player is paused or closed (Yandex Music, which posts nothing, is the
+   exception), and the app reads once more right when a track should end. It downloads the cover, samples its colors and
    asks WidgetKit to reload the widgets when something visible changes.
 2. The widget asks the app for the current snapshot over a loopback TCP connection guarded by
    a per checkout token (`scripts/configure.sh`). No App Group is needed, so the app also works
    with an ad hoc signature.
 3. A widget button runs an App Intent inside the extension. The intent forwards the command to
-   the app, the app runs it in Spotify and answers with the new state, and WidgetKit redraws.
+   the app, the app runs it in the player and answers with the new state, and WidgetKit redraws.
 4. Between reloads the progress bar and the elapsed time advance on their own.
 
 The app must keep running in the background for the widget to stay current. Turn on
@@ -91,4 +111,4 @@ runs, but macOS may not list the widget in the gallery. After the first launch, 
 desktop, choose Edit Widgets and find TrackPin. If the widget does not appear, quit TrackPin,
 run `killall chronod NotificationCenter` and open the app again.
 
-TrackPin is an independent project and is not affiliated with Spotify.
+TrackPin is an independent project and is not affiliated with Spotify, Apple or Yandex.

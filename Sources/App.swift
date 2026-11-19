@@ -63,6 +63,21 @@ enum SelfTest {
             fatalError("Playback data could not be decoded")
         }
 
+        let web = #"{"ok":true,"id":"42","title":"Song","artist":"A, B","cover":"https://avatars.yandex.net/x/400x400","duration":200,"position":12.5,"playing":true,"volume":55,"shuffle":false,"repeat":true}"#
+        guard case let .track(yandex) = YandexWebBridge.decode(web),
+              yandex.id == "yandex:track:42", yandex.artist == "A, B", yandex.position == 12.5,
+              yandex.playing, yandex.volume == 55, yandex.repeating == true,
+              yandex.webLink?.absoluteString == "https://music.yandex.ru/track/42",
+              YandexWebBridge.decode(#"{"ok":true,"idle":true}"#) == .idle,
+              YandexWebBridge.decode("none") == .unavailable,
+              YandexAppBridge.seconds("3:05") == 185, YandexAppBridge.seconds("-0:45") == -45,
+              YandexAppBridge.seconds("1:02:03") == 3723, YandexAppBridge.seconds("Песня") == nil,
+              YandexAppBridge.trackID("/album/1/track/77?x=1") == "77",
+              YandexAppBridge.largeCover("https://avatars.yandex.net/get/a/100x100") == "https://avatars.yandex.net/get/a/400x400",
+              SourceSelection.allCases.allSatisfy({ SourceSelection(rawValue: $0.rawValue) == $0 }) else {
+            fatalError("Yandex Music data could not be decoded")
+        }
+
         let get = WidgetTransport.Request.snapshot
         let skip = WidgetTransport.Request.command(.forward, step: 15)
         guard WidgetTransport.Request(line: get.line) == get,
@@ -115,6 +130,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsVisible = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        player.selection = preferences.sourceSelection
+        player.scansBrowser = preferences.scansBrowser
         player.foregroundInterval = preferences.refreshInterval
         player.backgroundInterval = preferences.backgroundInterval
         miniPlayer.showSettings = { [weak self] in self?.showSettings() }
@@ -128,8 +145,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         player.$playback
             .removeDuplicates()
-            .combineLatest(preferences.$style.removeDuplicates())
-            .sink { [weak self] playback, style in self?.publisher.publish(playback, style: style) }
+            .combineLatest(preferences.$style.removeDuplicates(), player.$source.removeDuplicates())
+            .sink { [weak self] playback, style, source in self?.publisher.publish(playback, style: style, source: source) }
+            .store(in: &observations)
+        preferences.$sourceSelection
+            .sink { [weak self] selection in self?.player.selection = selection }
+            .store(in: &observations)
+        preferences.$scansBrowser
+            .sink { [weak self] scans in self?.player.scansBrowser = scans }
             .store(in: &observations)
         // `record` ignores repeated reads of the same play, so every playing read can go in.
         player.$playback
@@ -209,7 +232,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         history.flush()
     }
 
-    /// Poll Spotify often only while the user can see a TrackPin window.
+    /// Poll the player often only while the user can see a TrackPin window.
     private func updateForeground() {
         player.isForeground = miniPlayerVisible || settingsVisible
     }
@@ -225,14 +248,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func perform(_ action: PlayerAction, step: Int, done: @escaping () -> Void) {
         if action == .toggle, preferences.launchSpotifyOnPlay, player.playback == .closed {
-            player.openSpotify()
+            player.openPlayer()
             done()
             return
         }
         player.send(PlayerCommand(action, step: step)) { [weak self] playback in
             guard let self else { done(); return }
             // Publish right away so the reply and the widget reload already show the new state.
-            self.publisher.publish(playback, style: self.preferences.style)
+            self.publisher.publish(playback, style: self.preferences.style, source: self.player.source)
             done()
         }
     }
@@ -242,7 +265,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             switch url.host {
             case "open":
                 switch preferences.tapAction {
-                case .spotify: player.openSpotify()
+                case .spotify: player.openPlayer()
                 case .player: miniPlayer.show(from: NSEvent.mouseLocation)
                 case .settings: showSettings()
                 }
@@ -280,7 +303,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             sleep.submenu = NSMenu()
             menu.addItem(sleep)
             sleepMenuItem = sleep
-            add("Открыть Spotify", #selector(openSpotify), to: menu)
+            add("Открыть плеер", #selector(openPlayer), to: menu)
             add("Обновить виджеты", #selector(reloadWidgets), to: menu)
             menu.addItem(.separator())
             menu.addItem(withTitle: "Выйти из TrackPin", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -352,7 +375,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(item)
     }
 
-    @objc private func openSpotify() { player.openSpotify() }
+    @objc private func openPlayer() { player.openPlayer() }
     @objc private func reloadWidgets() { publisher.reloadWidgets() }
     @objc private func showMiniPlayer() { miniPlayer.show() }
 

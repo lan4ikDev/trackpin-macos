@@ -145,10 +145,10 @@ struct TrackPinCard: View {
             return ("pin.fill", "Открой TrackPin", "Приложение передаёт виджету трек и выполняет команды")
         }
         switch snapshot.playback {
-        case .closed: return ("music.note", "Spotify закрыт", "Нажми, чтобы открыть Spotify")
-        case .idle: return ("music.note.list", "Ничего не играет", "Включи трек в Spotify")
-        case .denied: return ("lock.fill", "Нужен доступ", "Разреши TrackPin управлять Spotify в настройках macOS")
-        case .unavailable: return ("exclamationmark.triangle.fill", "Spotify не ответил", "Попробуем ещё раз через пару секунд")
+        case .closed: return ("music.note", "Плеер закрыт", "Нажми, чтобы открыть \(snapshot.sourceTitle)")
+        case .idle: return ("music.note.list", "Ничего не играет", "Включи трек в плеере «\(snapshot.sourceTitle)»")
+        case .denied: return ("lock.fill", "Нужен доступ", "Нажми и разреши TrackPin читать \(snapshot.sourceTitle)")
+        case .unavailable: return ("exclamationmark.triangle.fill", "Плеер не ответил", "Попробуем ещё раз через пару секунд")
         case .track: return ("music.note", "", "")
         }
     }
@@ -165,7 +165,7 @@ struct TrackPinCard: View {
     private var header: some View {
         HStack(spacing: 6) {
             logo
-            Text("Spotify").font(.system(size: 11, weight: .semibold)).foregroundStyle(colors.accent)
+            Text(snapshot.sourceTitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(colors.accent)
                 .widgetAccentable()
             Spacer(minLength: 0)
             if let track = snapshot.playback.currentTrack, track.playing {

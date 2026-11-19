@@ -19,6 +19,6 @@
     </dict></array>
     <key>CFBundleIconFile</key><string>TrackPin</string>
     <key>LSUIElement</key><true/>
-    <key>NSAppleEventsUsageDescription</key><string>TrackPin управляет воспроизведением и показывает текущий трек Spotify.</string>
+    <key>NSAppleEventsUsageDescription</key><string>TrackPin управляет воспроизведением и показывает текущий трек Spotify, Apple Music и Яндекс Музыки в браузере.</string>
 </dict>
 </plist>

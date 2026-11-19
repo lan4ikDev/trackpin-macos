@@ -8,10 +8,18 @@ enum Artwork {
     /// Big enough for the large widget on a Retina display.
     static let maxPixelSize = 600
 
+    /// Loads a cover from the web, or from a local file (Apple Music covers are cached as files).
     static func load(_ url: URL) async -> (data: Data, palette: ArtworkPalette?)? {
-        guard let (data, response) = try? await URLSession.shared.data(from: url),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
+        let data: Data
+        if url.isFileURL {
+            guard let local = try? Data(contentsOf: url) else { return nil }
+            data = local
+        } else {
+            guard let (remote, response) = try? await URLSession.shared.data(from: url),
+                  (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            data = remote
+        }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,

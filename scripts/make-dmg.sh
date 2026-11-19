@@ -4,7 +4,8 @@
 set -euo pipefail
 project="$(cd "$(dirname "$0")/.." && pwd)"
 "$project/build.sh"
-app="$project/build/TrackPin.app"
+app="$HOME/Library/Caches/TrackPin/DerivedData/Build/Products/Release/TrackPin.app"
+mkdir -p "$project/build"
 version="$(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString)"
 staging="$(mktemp -d)"
 trap 'rm -rf "$staging"' EXIT

@@ -38,10 +38,9 @@ fi
 app="$derived/Build/Products/Release/TrackPin.app"
 codesign --verify --deep --strict "$app"
 "$app/Contents/MacOS/TrackPin" --self-test
-mkdir -p "$project/build"
-rm -rf "$project/build/TrackPin.app"
-cp -R "$app" "$project/build/TrackPin.app"
-echo "Built $project/build/TrackPin.app"
+# No copy in the project folder: every extra TrackPin.app that Spotlight finds can show up as a
+# second TrackPin in the widget gallery.
+echo "Built $app"
 
 if $install; then
     osascript -e 'quit app "TrackPin"' >/dev/null 2>&1 || true

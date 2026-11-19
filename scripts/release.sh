@@ -11,7 +11,7 @@ project="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project"
 "$project/scripts/make-dmg.sh"
 
-app="$project/build/TrackPin.app"
+app="$HOME/Library/Caches/TrackPin/DerivedData/Build/Products/Release/TrackPin.app"
 version="$(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString)"
 build="$(defaults read "$app/Contents/Info.plist" CFBundleVersion)"
 dmg="$project/build/TrackPin-$version.dmg"

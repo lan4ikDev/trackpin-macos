@@ -115,13 +115,32 @@ final class Player: NSObject, ObservableObject {
             workspaceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
                 let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 guard let id = app?.bundleIdentifier, watched.contains(id) else { return }
-                // A player needs a moment after launch before it answers.
-                DispatchQueue.main.asyncAfter(deadline: .now() + (name == NSWorkspace.didLaunchApplicationNotification ? 2 : 0.2)) {
-                    self?.refresh(probe: true)
+                if name == NSWorkspace.didLaunchApplicationNotification {
+                    self?.followLaunch()
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self?.refresh(probe: true) }
                 }
             })
         }
         refresh(probe: true)
+    }
+
+    /// A freshly started player needs a few seconds before it answers and restores its last
+    /// track. Read it a handful of times with growing gaps until a track shows up, instead of
+    /// once after a fixed delay that was either too early or needlessly late.
+    private func followLaunch() {
+        launchGeneration += 1
+        let generation = launchGeneration
+        for delay in [0.4, 1, 2, 3.5, 5.5, 8, 12, 18] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.launchGeneration == generation else { return }
+                if self.playback.currentTrack != nil {
+                    self.launchGeneration += 1 // Found it: stop the remaining reads.
+                    return
+                }
+                self.refresh(probe: true)
+            }
+        }
     }
 
     deinit {
@@ -129,6 +148,9 @@ final class Player: NSObject, ObservableObject {
         DistributedNotificationCenter.default().removeObserver(self)
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
     }
+
+    /// Bumped to cancel the reads scheduled by `followLaunch`.
+    private var launchGeneration = 0
 
     private var backend: PlayerBackend { backends[source]! }
 

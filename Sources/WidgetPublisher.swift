@@ -10,11 +10,18 @@ final class WidgetPublisher: ObservableObject {
 
     @Published private(set) var snapshot: WidgetSnapshot = .offline
     @Published private(set) var listening = false
+    /// The current cover, decoded once for the mini player.
+    @Published private(set) var coverImage: NSImage?
+    /// A small, heavily blurred copy of the cover for backgrounds. Blurring once here is far
+    /// cheaper than a live `.blur` modifier that SwiftUI would recompute on every redraw.
+    @Published private(set) var blurredCover: NSImage?
     /// Runs a widget command and calls the closure once the new state was published.
     var onCommand: CommandHandler?
 
     private var listener: NWListener?
-    private var response: Data?
+    /// The encoded snapshot, built lazily when the widget asks: the app reads Spotify far more
+    /// often than the widget reloads, and the snapshot carries the cover.
+    private var encoded: Data?
     private var coverURL: URL?
     private var cover: Data?
     private var palette: ArtworkPalette?
@@ -75,7 +82,8 @@ final class WidgetPublisher: ObservableObject {
     }
 
     private func reply(on connection: NWConnection) {
-        guard let response else { connection.cancel(); return }
+        if encoded == nil { encoded = try? JSONEncoder().encode(snapshot) }
+        guard let response = encoded else { connection.cancel(); return }
         connection.send(content: response, contentContext: .finalMessage, isComplete: true,
                         completion: .contentProcessed { error in
             if error != nil { connection.cancel() }
@@ -91,19 +99,23 @@ final class WidgetPublisher: ObservableObject {
             coverURL = url
             cover = nil
             palette = nil
+            coverImage = nil
+            blurredCover = nil
             if let url {
                 artworkTask = Task { @MainActor [weak self] in
                     let artwork = await Artwork.load(url)
                     guard !Task.isCancelled, let self, self.coverURL == url else { return }
                     self.cover = artwork?.data
                     self.palette = artwork?.palette
+                    self.coverImage = artwork.flatMap { NSImage(data: $0.data) }
+                    self.blurredCover = artwork.flatMap { Artwork.blurred($0.data) }
                     self.publish(self.snapshot.playback, style: self.snapshot.style)
                 }
             }
         }
 
         let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: cover, palette: palette, style: style)
-        response = try? JSONEncoder().encode(next)
+        encoded = nil
         let reload = needsReload(from: snapshot, to: next)
         snapshot = next
         if reload { reloadWidgets() }

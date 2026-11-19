@@ -5,17 +5,71 @@ struct SettingsView: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var player: Player
     @ObservedObject var publisher: WidgetPublisher
+    let showMiniPlayer: () -> Void
 
     var body: some View {
         TabView {
             AppearanceSettings(preferences: preferences, publisher: publisher)
                 .tabItem { Label("Виджет", systemImage: "rectangle.3.group") }
+            MiniPlayerSettings(preferences: preferences, showMiniPlayer: showMiniPlayer)
+                .tabItem { Label("Мини-плеер", systemImage: "rectangle.portrait.on.rectangle.portrait") }
             GeneralSettings(preferences: preferences)
                 .tabItem { Label("Основные", systemImage: "gearshape") }
             HelpSettings(player: player, publisher: publisher)
                 .tabItem { Label("Доступ и помощь", systemImage: "questionmark.circle") }
         }
-        .frame(width: 820, height: 560)
+        .frame(width: 820, height: 600)
+    }
+}
+
+// MARK: Mini player
+
+private struct MiniPlayerSettings: View {
+    @ObservedObject var preferences: Preferences
+    let showMiniPlayer: () -> Void
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Нажатие на виджет", selection: $preferences.tapAction) {
+                    ForEach(TapAction.allCases) { Text($0.title).tag($0) }
+                }
+                Button("Показать мини-плеер", action: showMiniPlayer)
+            } footer: {
+                Text("Мини-плеер открывается из точки, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc.")
+            }
+            Section("Вид") {
+                Picker("Размер", selection: $preferences.popupSize) {
+                    ForEach(PopupSize.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Picker("Фон", selection: $preferences.popupBackground) {
+                    ForEach(PopupBackground.allCases) { Text($0.title).tag($0) }
+                }
+                Picker("Обложка", selection: $preferences.popupCoverShape) {
+                    ForEach(ArtworkShape.allCases) { Text($0.title).tag($0) }
+                }
+                Toggle("Громкость", isOn: $preferences.popupShowsVolume)
+                Toggle("Перемешивание и повтор", isOn: $preferences.popupShowsModes)
+                Text("Цвет кнопок, исполнитель и время трека берутся из настроек виджета.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Поведение") {
+                Picker("Где открывать", selection: $preferences.popupPlacement) {
+                    ForEach(PopupPlacement.allCases) { Text($0.title).tag($0) }
+                }
+                Toggle("Анимация открытия", isOn: $preferences.popupAnimated)
+                Toggle("Закрывать при клике мимо", isOn: $preferences.popupClosesOnClickOutside)
+                Toggle("Горячая клавиша ⌃⌥P открывает и закрывает мини-плеер", isOn: $preferences.hotKey)
+            }
+            Section("Клавиши в мини-плеере") {
+                LabeledContent("Пробел", value: "Пауза и воспроизведение")
+                LabeledContent("← →", value: "Перемотка на шаг из настроек виджета")
+                LabeledContent("↑ ↓", value: "Громкость")
+                LabeledContent("Esc", value: "Закрыть")
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 
@@ -172,23 +226,31 @@ private struct GeneralSettings: View {
                 Text("Виджет получает трек от приложения, поэтому TrackPin должен работать в фоне.")
                     .font(.caption).foregroundStyle(.secondary)
                 Toggle("Иконка в строке меню", isOn: $preferences.showMenuBarIcon)
+                Toggle("Название трека рядом с иконкой", isOn: $preferences.menuBarTitle)
+                    .disabled(!preferences.showMenuBarIcon)
                 if !preferences.showMenuBarIcon {
                     Text("Чтобы вернуться в настройки, открой TrackPin ещё раз из «Программ» или через Spotlight.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Section("Поведение виджета") {
-                Picker("Нажатие на виджет", selection: $preferences.tapAction) {
-                    ForEach(TapAction.allCases) { Text($0.title).tag($0) }
-                }
                 Toggle("Кнопка воспроизведения запускает Spotify, если он закрыт", isOn: $preferences.launchSpotifyOnPlay)
-                Picker("Проверять Spotify", selection: $preferences.refreshInterval) {
+            }
+            Section {
+                Picker("Пока открыт мини-плеер или настройки", selection: $preferences.refreshInterval) {
                     Text("Каждую секунду").tag(1.0)
                     Text("Раз в 2 секунды").tag(2.0)
                     Text("Раз в 5 секунд").tag(5.0)
                 }
-                Text("Чем реже, тем меньше нагрузка, но тем позже виджет заметит трек, переключённый в самом Spotify. Нажатия кнопок виджета отрабатывают сразу.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Picker("В фоне, пока играет музыка", selection: $preferences.backgroundInterval) {
+                    Text("Только по событиям Spotify").tag(0.0)
+                    Text("Раз в 30 секунд").tag(30.0)
+                    Text("Раз в 2 минуты").tag(120.0)
+                }
+            } header: {
+                Text("Энергосбережение")
+            } footer: {
+                Text("Spotify сам сообщает о паузе и смене трека, и TrackPin обновляет виджет сразу. Опрос в фоне нужен только чтобы заметить перемотку внутри Spotify. На паузе и при закрытом Spotify TrackPin ничего не опрашивает.")
             }
         }
         .formStyle(.grouped)

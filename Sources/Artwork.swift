@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -21,6 +22,22 @@ enum Artwork {
         CGImageDestinationAddImage(destination, thumbnail, [kCGImageDestinationLossyCompressionQuality: 0.82] as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return nil }
         return (output as Data, palette(of: thumbnail))
+    }
+
+    /// A 160 px, strongly blurred and saturated copy of the cover, rendered once per track.
+    static func blurred(_ data: Data) -> NSImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let small = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: 160
+              ] as CFDictionary) else { return nil }
+        let input = CIImage(cgImage: small)
+        let output = input.clampedToExtent()
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 14])
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.35, kCIInputBrightnessKey: -0.06])
+            .cropped(to: input.extent)
+        guard let image = CIContext(options: [.useSoftwareRenderer: false]).createCGImage(output, from: input.extent) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 
     /// Two dark background colors (top and bottom halves of the cover) and a light accent

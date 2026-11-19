@@ -23,15 +23,24 @@ progress, and has playback buttons that work right on the desktop.
   - open at login, menu bar icon, what a click on the widget opens, whether play starts Spotify,
     how often Spotify is polled;
   - Spotify and widget status, Automation permission shortcut, help for adding the widget.
-- **Menu bar player** with a seek slider, as before.
+- **Mini player**: a click on the widget opens a vertical card that grows out of the click
+  point. Most of it is the album cover, below it the track, a seek bar, playback buttons,
+  shuffle, repeat and volume. Space, arrows and Esc work while it is open. Size, background
+  (blurred cover, widget theme or glass), cover shape, placement and the opening animation
+  are configurable. ⌃⌥P toggles it from anywhere; the menu bar icon opens it with a left click.
+- **Menu bar**: optional track title next to the icon, right click for the menu.
 
 ## How it works
 
 WidgetKit extensions are sandboxed and cannot send Apple Events, and widgets are not redrawn
 in real time. So the TrackPin app does the work and the widget only displays it:
 
-1. The app polls Spotify through AppleScript (every 1, 2 or 5 seconds), downloads the cover,
-   samples its colors and asks WidgetKit to reload the widgets when something visible changes.
+1. The app reads Spotify through in-process AppleScript (`NSAppleScript`, compiled once). It
+   reads right away when Spotify posts `PlaybackStateChanged` (play, pause, next track) and
+   polls only while a TrackPin window is visible (every 1, 2 or 5 seconds) or, in the
+   background, every 30 s or 2 min while a track plays (configurable, can be off). Nothing is
+   polled while Spotify is paused or closed. It downloads the cover, samples its colors and
+   asks WidgetKit to reload the widgets when something visible changes.
 2. The widget asks the app for the current snapshot over a loopback TCP connection guarded by
    a per checkout token (`scripts/configure.sh`). No App Group is needed, so the app also works
    with an ad hoc signature.

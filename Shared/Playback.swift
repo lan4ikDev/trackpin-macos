@@ -8,6 +8,18 @@ struct Track: Codable, Equatable {
     let duration: Double
     var position: Double
     var playing: Bool
+    /// Player settings read together with the track. Optional, so snapshots cached by
+    /// older versions still decode.
+    var volume: Int? = nil
+    var shuffling: Bool? = nil
+    var repeating: Bool? = nil
+
+    /// A link to the track on open.spotify.com, for `spotify:track:<id>` identifiers.
+    var webLink: URL? {
+        let parts = id.split(separator: ":")
+        guard parts.count == 3, parts[0] == "spotify" else { return nil }
+        return URL(string: "https://open.spotify.com/\(parts[1])/\(parts[2])")
+    }
 }
 
 enum Playback: Codable, Equatable {

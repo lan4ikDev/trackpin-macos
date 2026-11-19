@@ -9,6 +9,11 @@ enum TrackPinApp {
             SelfTest.run()
             return
         }
+        if let index = CommandLine.arguments.firstIndex(of: "--render-mini-player"),
+           CommandLine.arguments.indices.contains(index + 1) {
+            MiniPlayerRender.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+            return
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -17,15 +22,39 @@ enum TrackPinApp {
     }
 }
 
+/// Draws the mini player with a demo track into a PNG, for checking its layout without a screen.
+@MainActor
+enum MiniPlayerRender {
+    static func write(to url: URL) {
+        let model = MiniPlayerModel()
+        model.presented = true
+        let view = MiniPlayerView(player: Player(demo: true), preferences: Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard),
+                                  publisher: WidgetPublisher(), model: model, close: {}, showSettings: {})
+            .background(Color(white: 0.85))
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.cgImage else { return }
+        let rep = NSBitmapImageRep(cgImage: image)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+}
+
 enum SelfTest {
     static func run() {
-        let sample = #"{"spotify:track:001", "One, \"Two\"", "Artist", "https://i.scdn.co/image/test", 228000, 72.5, true}"#
-        guard case let .track(track) = SpotifyBridge.decode(sample),
+        let list = NSAppleEventDescriptor.list()
+        let items: [NSAppleEventDescriptor] = [
+            .init(string: "spotify:track:001"), .init(string: "One, \"Two\""), .init(string: "Artist"),
+            .init(string: "https://i.scdn.co/image/test"), .init(int32: 228000), .init(double: 72.5),
+            .init(boolean: true), .init(int32: 64), .init(boolean: false), .init(boolean: true)
+        ]
+        for (index, item) in items.enumerated() { list.insert(item, at: index + 1) }
+        guard case let .track(track) = SpotifyBridge.decode(list),
               track.title == "One, \"Two\"",
               track.position == 72.5, track.duration == 228, track.playing,
-              SpotifyBridge.decode("{}") == .idle,
-              SpotifyBridge.decode("\"closed\"\n") == .closed,
-              SpotifyBridge.decode("bad input") == .unavailable else {
+              track.volume == 64, track.shuffling == false, track.repeating == true,
+              track.webLink?.absoluteString == "https://open.spotify.com/track/001",
+              SpotifyBridge.decode(.list()) == .idle,
+              SpotifyBridge.decode(NSAppleEventDescriptor(string: "bad input")) == .unavailable else {
             fatalError("Playback data could not be decoded")
         }
 
@@ -58,32 +87,72 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
     private lazy var player = Player(demo: CommandLine.arguments.contains("--demo"))
     private let publisher = WidgetPublisher()
+    private lazy var miniPlayer = MiniPlayerController(player: player, preferences: preferences, publisher: publisher)
     private var observations: Set<AnyCancellable> = []
-    private var playerWindow: NSWindow?
     private var settingsWindow: NSWindow?
     private var status: NSStatusItem?
+    private var statusMenu: NSMenu?
+    private var hotKey: HotKey?
+    private var miniPlayerVisible = false
+    private var settingsVisible = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        player.interval = preferences.refreshInterval
+        player.foregroundInterval = preferences.refreshInterval
+        player.backgroundInterval = preferences.backgroundInterval
+        miniPlayer.showSettings = { [weak self] in self?.showSettings() }
+        miniPlayer.onVisibilityChange = { [weak self] visible in
+            self?.miniPlayerVisible = visible
+            self?.updateForeground()
+        }
         publisher.onCommand = { [weak self] action, step, done in
             guard let self else { done(); return }
             self.perform(action, step: step, done: done)
         }
         player.$playback
-            .combineLatest(preferences.$style)
+            .removeDuplicates()
+            .combineLatest(preferences.$style.removeDuplicates())
             .sink { [weak self] playback, style in self?.publisher.publish(playback, style: style) }
             .store(in: &observations)
         preferences.$refreshInterval
-            .sink { [weak self] interval in self?.player.interval = interval }
+            .sink { [weak self] interval in self?.player.foregroundInterval = interval }
+            .store(in: &observations)
+        preferences.$backgroundInterval
+            .sink { [weak self] interval in self?.player.backgroundInterval = interval }
             .store(in: &observations)
         preferences.$showMenuBarIcon
-            .sink { [weak self] visible in self?.setMenuBarIcon(visible) }
+            .combineLatest(preferences.$menuBarTitle)
+            .sink { [weak self] visible, _ in
+                // The sink runs before the new value is stored; read it on the next turn.
+                DispatchQueue.main.async { self?.setMenuBarIcon(visible) }
+            }
             .store(in: &observations)
+        player.$playback
+            .map { $0.currentTrack.map { "\($0.title) — \($0.artist)" } }
+            .removeDuplicates()
+            .sink { [weak self] _ in DispatchQueue.main.async { self?.updateMenuBarTitle() } }
+            .store(in: &observations)
+        preferences.$hotKey
+            .sink { [weak self] enabled in
+                self?.hotKey = enabled ? HotKey { [weak self] in self?.miniPlayer.toggle() } : nil
+            }
+            .store(in: &observations)
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] note in
+            MainActor.assumeIsolated {
+                guard let self, (note.object as? NSWindow) === self.settingsWindow else { return }
+                self.settingsVisible = false
+                self.updateForeground()
+            }
+        }
 
         if !preferences.didOnboard {
             preferences.didOnboard = true
             showSettings()
         }
+    }
+
+    /// Poll Spotify often only while the user can see a TrackPin window.
+    private func updateForeground() {
+        player.isForeground = miniPlayerVisible || settingsVisible
     }
 
     /// Opening the app again (from Finder or Spotlight) shows the settings, which is the
@@ -115,11 +184,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             case "open":
                 switch preferences.tapAction {
                 case .spotify: player.openSpotify()
-                case .player: showPlayer()
+                case .player: miniPlayer.show(from: NSEvent.mouseLocation)
                 case .settings: showSettings()
                 }
             case "settings": showSettings()
-            case "player": showPlayer()
+            case "player": miniPlayer.show(from: NSEvent.mouseLocation)
             case "toggle": perform(.toggle, step: 15) {}
             case "rewind": perform(.rewind, step: preferences.style.seekStep) {}
             case "forward": perform(.forward, step: preferences.style.seekStep) {}
@@ -138,18 +207,48 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             status = nil
             return
         }
-        guard status == nil else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "TrackPin")
-        let menu = NSMenu()
-        add("Открыть плеер", #selector(showPlayer), to: menu)
-        add("Настройки…", #selector(showSettings), to: menu, key: ",")
-        add("Открыть Spotify", #selector(openSpotify), to: menu)
-        add("Обновить виджеты", #selector(reloadWidgets), to: menu)
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Выйти из TrackPin", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        item.menu = menu
-        status = item
+        if status == nil {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.button?.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "TrackPin")
+            item.button?.imagePosition = .imageLeading
+            item.button?.target = self
+            item.button?.action = #selector(statusClicked)
+            item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            let menu = NSMenu()
+            add("Мини-плеер", #selector(showMiniPlayer), to: menu)
+            add("Настройки…", #selector(showSettings), to: menu, key: ",")
+            add("Открыть Spotify", #selector(openSpotify), to: menu)
+            add("Обновить виджеты", #selector(reloadWidgets), to: menu)
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Выйти из TrackPin", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            statusMenu = menu
+            status = item
+        }
+        updateMenuBarTitle()
+    }
+
+    private func updateMenuBarTitle() {
+        guard let button = status?.button else { return }
+        guard preferences.menuBarTitle, let track = player.playback.currentTrack else {
+            button.title = ""
+            return
+        }
+        let text = "\(track.title) — \(track.artist)"
+        button.title = " " + (text.count > 32 ? String(text.prefix(31)) + "…" : text)
+        button.font = .menuBarFont(ofSize: 0)
+    }
+
+    /// Left click opens the mini player under the icon, right click shows the menu.
+    @objc private func statusClicked() {
+        guard let button = status?.button else { return }
+        if NSApp.currentEvent?.type == .rightMouseUp || NSApp.currentEvent?.modifierFlags.contains(.control) == true {
+            status?.menu = statusMenu
+            button.performClick(nil)
+            status?.menu = nil
+            return
+        }
+        let frame = button.window?.convertToScreen(button.convert(button.bounds, to: nil)) ?? .zero
+        miniPlayer.toggle(from: NSPoint(x: frame.midX, y: frame.minY))
     }
 
     private func add(_ title: String, _ action: Selector, to menu: NSMenu, key: String = "") {
@@ -160,56 +259,27 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSpotify() { player.openSpotify() }
     @objc private func reloadWidgets() { publisher.reloadWidgets() }
+    @objc private func showMiniPlayer() { miniPlayer.show() }
 
     // MARK: Windows
 
-    @objc private func showPlayer() {
-        if playerWindow == nil {
-            let view = PlayerWindowView(player: player, preferences: preferences, publisher: publisher) { [weak self] in
-                self?.showSettings()
-            }
-            playerWindow = makeWindow("Плеер TrackPin", size: NSSize(width: 372, height: 166), content: view)
-        }
-        present(playerWindow)
-    }
-
     @objc private func showSettings() {
         if settingsWindow == nil {
-            let view = SettingsView(preferences: preferences, player: player, publisher: publisher)
-            settingsWindow = makeWindow("Настройки TrackPin", size: NSSize(width: 820, height: 560), content: view)
+            let view = SettingsView(preferences: preferences, player: player, publisher: publisher,
+                                    showMiniPlayer: { [weak self] in self?.miniPlayer.show() })
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
+                                  styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+            window.title = "Настройки TrackPin"
+            window.isReleasedWhenClosed = false
+            window.collectionBehavior = [.fullScreenNone]
+            window.tabbingMode = .disallowed
+            window.contentView = NSHostingView(rootView: view)
+            window.center()
+            settingsWindow = window
         }
-        present(settingsWindow)
-    }
-
-    private func makeWindow<Content: View>(_ title: String, size: NSSize, content: Content) -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
-                              styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = title
-        window.isReleasedWhenClosed = false
-        window.collectionBehavior = [.fullScreenNone]
-        window.tabbingMode = .disallowed
-        window.contentView = NSHostingView(rootView: content)
-        window.setContentSize(size)
-        window.center()
-        return window
-    }
-
-    private func present(_ window: NSWindow?) {
+        settingsVisible = true
+        updateForeground()
         NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
-    }
-}
-
-private struct PlayerWindowView: View {
-    @ObservedObject var player: Player
-    @ObservedObject var preferences: Preferences
-    @ObservedObject var publisher: WidgetPublisher
-    let showSettings: () -> Void
-
-    var body: some View {
-        // The player window is always dark; light themes fall back to graphite.
-        let themed = preferences.style.theme.colors(palette: publisher.snapshot.palette, scheme: .dark)
-        let colors = themed.dark ? themed : WidgetTheme.graphite.colors(palette: nil, scheme: .dark)
-        WidgetView(player: player, colors: colors, showTime: preferences.style.showTime, showSettings: showSettings)
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 }

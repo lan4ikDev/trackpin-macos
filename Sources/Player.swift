@@ -1,8 +1,32 @@
 import AppKit
-import os
 
+/// A small timing log in ~/Library/Logs/TrackPin.log (the unified log is not readable
+/// without admin rights), used to find where a command loses time.
 enum Log {
-    static let player = Logger(subsystem: "dev.lan4ik.needle", category: "player")
+    static let player = FileLog()
+}
+
+final class FileLog {
+    private let queue = DispatchQueue(label: "dev.lan4ik.needle.log", qos: .utility)
+    private let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TrackPin.log")
+    private let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter
+    }()
+
+    func notice(_ message: String) {
+        let line = "\(formatter.string(from: Date())) \(message)\n"
+        queue.async { [url] in
+            if let handle = try? FileHandle(forWritingTo: url) {
+                handle.seekToEndOfFile()
+                handle.write(Data(line.utf8))
+                try? handle.close()
+            } else {
+                try? Data(line.utf8).write(to: url)
+            }
+        }
+    }
 }
 
 /// Which player TrackPin follows: one chosen in the settings, or whichever is playing.
@@ -91,7 +115,9 @@ final class Player: NSObject, ObservableObject {
     /// A refresh was asked for while another one ran.
     private var again = false
     private var lastProbe = Date.distantPast
-    private var pending: [(command: PlayerCommand, completion: Completion?)] = []
+    /// `expected` is the play state a play/pause should lead to: Spotify can still report the
+    /// old state for a moment right after the command.
+    private var pending: [(command: PlayerCommand, completion: Completion?, expected: Bool?)] = []
     private var workspaceObservers: [NSObjectProtocol] = []
     let demo: Bool
 
@@ -203,7 +229,7 @@ final class Player: NSObject, ObservableObject {
 
     /// Queues a command. `completion` receives the playback state read right after the command ran.
     func send(_ command: PlayerCommand, completion: Completion? = nil) {
-        Log.player.notice("send \(String(describing: command), privacy: .public), busy: \(self.busy)")
+        Log.player.notice("send \(String(describing: command)), busy: \(self.busy)")
         if demo, case var .track(track) = playback {
             switch command {
             case .toggle: track.playing.toggle()
@@ -220,16 +246,18 @@ final class Player: NSObject, ObservableObject {
             return
         }
         // Show the new play state right away; the read after the command confirms it.
+        var expected: Bool?
         if command == .toggle || command == .pause, case var .track(track) = playback {
             if track.playing { track.position = min(track.duration, track.position + Date().timeIntervalSince(sampledAt)) }
             track.playing = command == .pause ? false : !track.playing
+            expected = track.playing
             sampledAt = Date()
             playback = .track(track)
         }
         if command.coalesces, let last = pending.last, last.command.sameKind(as: command), last.completion == nil {
             pending.removeLast()
         }
-        pending.append((command, completion))
+        pending.append((command, completion, expected))
         refresh()
     }
 
@@ -290,8 +318,19 @@ final class Player: NSObject, ObservableObject {
         queue.async {
             let started = Date()
             var result = active.read(command: next?.command)
+            // Right after play/pause the player may still answer with the old state. Read again
+            // briefly until it agrees, so the widget does not show (and keep) the stale state.
+            if let expected = next?.expected {
+                var attempts = 0
+                while attempts < 6, let track = result.currentTrack, track.playing != expected {
+                    usleep(120_000)
+                    result = active.read(command: nil)
+                    attempts += 1
+                }
+                if attempts > 0 { Log.player.notice("play state settled after \(attempts) extra reads") }
+            }
             if let command = next?.command {
-                Log.player.notice("command \(String(describing: command), privacy: .public): waited \(Int(started.timeIntervalSince(queued) * 1000)) ms, ran \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+                Log.player.notice("command \(String(describing: command)): waited \(Int(started.timeIntervalSince(queued) * 1000)) ms, ran \(Int(Date().timeIntervalSince(started) * 1000)) ms")
             }
             var origin = active.source
             if Self.rank(result) < 3 {

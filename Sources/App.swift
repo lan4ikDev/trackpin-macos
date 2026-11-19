@@ -406,7 +406,20 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Commands
 
+    /// When play/pause was last run, to drop the second click of a double click.
+    private var lastToggle = Date.distantPast
+
     private func perform(_ action: PlayerAction, step: Int, done: @escaping () -> Void) {
+        // A double click on a widget button runs its intent twice, about 0.15 s apart, and the
+        // second play/pause undoes the first. Ignore a toggle that follows another that closely.
+        if action == .toggle {
+            if Date().timeIntervalSince(lastToggle) < 0.5 {
+                Log.player.notice("ignored a second toggle")
+                done()
+                return
+            }
+            lastToggle = Date()
+        }
         if action == .toggle, preferences.launchSpotifyOnPlay, player.playback == .closed {
             player.openPlayer()
             done()

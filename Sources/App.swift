@@ -231,6 +231,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         preferences.$backgroundInterval
             .sink { [weak self] interval in self?.player.backgroundInterval = interval }
             .store(in: &observations)
+        preferences.$showInDock
+            .removeDuplicates()
+            .sink { visible in
+                NSApp.setActivationPolicy(visible ? .regular : .accessory)
+            }
+            .store(in: &observations)
+        // The widget only stays current while TrackPin runs, so start it at login unless the
+        // user turned that off.
+        if !preferences.didSetUpLoginItem {
+            preferences.didSetUpLoginItem = true
+            if !LoginItem.enabled { _ = LoginItem.set(true) }
+        }
         preferences.$showMenuBarIcon
             .combineLatest(preferences.$menuBarTitle)
             .sink { [weak self] visible, _ in
@@ -298,6 +310,28 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateForeground() {
         player.isForeground = miniPlayerVisible || settingsVisible
     }
+
+    /// Right click on the Dock icon.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        let playing = player.playback.currentTrack?.playing == true
+        if let track = player.playback.currentTrack {
+            let now = NSMenuItem(title: "\(track.title) — \(track.artist)", action: nil, keyEquivalent: "")
+            now.isEnabled = false
+            menu.addItem(now)
+            menu.addItem(.separator())
+        }
+        add(playing ? String(localized: "Пауза") : String(localized: "Воспроизвести"), #selector(dockToggle), to: menu)
+        add(String(localized: "Следующий трек"), #selector(dockNext), to: menu)
+        add(String(localized: "Предыдущий трек"), #selector(dockPrevious), to: menu)
+        menu.addItem(.separator())
+        add(String(localized: "Мини-плеер"), #selector(showMiniPlayer), to: menu)
+        return menu
+    }
+
+    @objc private func dockToggle() { perform(.toggle, step: 15) {} }
+    @objc private func dockNext() { perform(.next, step: 15) {} }
+    @objc private func dockPrevious() { perform(.previous, step: 15) {} }
 
     /// Opening the app again (from Finder or Spotlight) shows the settings, which is the
     /// only way back in when the menu bar icon is hidden.

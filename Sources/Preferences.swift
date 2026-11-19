@@ -93,6 +93,15 @@ final class Preferences: ObservableObject {
     @Published var refreshInterval: Double {
         didSet { defaults.set(refreshInterval, forKey: Key.refreshInterval) }
     }
+    /// Show TrackPin in the Dock like a regular app, with a playback menu on right click.
+    @Published var showInDock: Bool {
+        didSet { defaults.set(showInDock, forKey: Key.showInDock) }
+    }
+    /// The login item was turned on once by default; after that only the user changes it.
+    var didSetUpLoginItem: Bool {
+        get { defaults.bool(forKey: Key.didSetUpLoginItem) }
+        set { defaults.set(newValue, forKey: Key.didSetUpLoginItem) }
+    }
     @Published var showMenuBarIcon: Bool {
         didSet { defaults.set(showMenuBarIcon, forKey: Key.showMenuBarIcon) }
     }
@@ -177,6 +186,8 @@ final class Preferences: ObservableObject {
         static let scansBrowser = "scansBrowser"
         static let refreshInterval = "refreshInterval"
         static let showMenuBarIcon = "showMenuBarIcon"
+        static let showInDock = "showInDock"
+        static let didSetUpLoginItem = "didSetUpLoginItem"
         static let tapAction = "tapAction"
         static let launchSpotifyOnPlay = "launchSpotifyOnPlay"
         static let didOnboard = "didOnboard"
@@ -216,6 +227,7 @@ final class Preferences: ObservableObject {
         let interval = defaults.double(forKey: Key.refreshInterval)
         refreshInterval = Self.refreshIntervals.contains(interval) ? interval : 1
         showMenuBarIcon = defaults.object(forKey: Key.showMenuBarIcon) as? Bool ?? true
+        showInDock = defaults.bool(forKey: Key.showInDock)
         tapAction = defaults.string(forKey: Key.tapAction).flatMap(TapAction.init(rawValue:)) ?? .player
         launchSpotifyOnPlay = defaults.object(forKey: Key.launchSpotifyOnPlay) as? Bool ?? true
         didOnboard = defaults.bool(forKey: Key.didOnboard)

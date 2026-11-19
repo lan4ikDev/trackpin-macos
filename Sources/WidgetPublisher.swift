@@ -28,6 +28,8 @@ final class WidgetPublisher: ObservableObject {
     private var artworkTask: Task<Void, Never>?
     /// A new cover is loading; the widget reload waits for it (at most two seconds).
     private var waitingForCover = false
+    private var pendingReload: DispatchWorkItem?
+    private var suppressedUntil = Date.distantPast
 
     init() {
         let params = NWParameters.tcp
@@ -77,6 +79,9 @@ final class WidgetPublisher: ObservableObject {
             case .snapshot:
                 self.reply(on: connection)
             case let .command(action, step):
+                // WidgetKit reloads the widget by itself once the button's intent returns, so a
+                // reload from the app now would only spend the daily budget twice.
+                self.suppressReloads(for: 3)
                 guard let onCommand = self.onCommand else { self.reply(on: connection); return }
                 onCommand(action, step) { [weak self] in self?.reply(on: connection) }
             }
@@ -136,10 +141,32 @@ final class WidgetPublisher: ObservableObject {
         encoded = nil
         let reload = needsReload(from: snapshot, to: next)
         snapshot = next
-        if reload && !waitingForCover { reloadWidgets() }
+        if reload && !waitingForCover { scheduleReload() }
     }
 
+    /// Coalesces the reloads of one change (track, play state, cover) into a single one.
+    /// macOS gives an app a limited number of widget reloads per day.
+    private func scheduleReload() {
+        guard Date() >= suppressedUntil, pendingReload == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            self?.pendingReload = nil
+            guard let self, Date() >= self.suppressedUntil else { return }
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+        pendingReload = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+    }
+
+    private func suppressReloads(for seconds: TimeInterval) {
+        suppressedUntil = Date().addingTimeInterval(seconds)
+        pendingReload?.cancel()
+        pendingReload = nil
+    }
+
+    /// Reloads right away, for an explicit request such as the "Update widgets" button.
     func reloadWidgets() {
+        pendingReload?.cancel()
+        pendingReload = nil
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -151,7 +178,7 @@ final class WidgetPublisher: ObservableObject {
         if let before = old.playback.currentTrack, let after = new.playback.currentTrack {
             let elapsed = before.playing ? new.sampledAt.timeIntervalSince(old.sampledAt) : 0
             return before.id != after.id || before.playing != after.playing || before.title != after.title
-                || before.volume != after.volume
+                || (new.style.showVolume && before.volume != after.volume)
                 || abs(min(before.duration, before.position + elapsed) - after.position) > 3
         }
         return old.playback != new.playback

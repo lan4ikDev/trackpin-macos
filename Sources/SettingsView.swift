@@ -437,6 +437,7 @@ private struct GeneralSettings: View {
                 }
                 Text("Виджет получает трек от приложения, поэтому TrackPin должен работать в фоне.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Иконка в Dock", isOn: $preferences.showInDock)
                 Toggle("Иконка в строке меню", isOn: $preferences.showMenuBarIcon)
                 Toggle("Название трека рядом с иконкой", isOn: $preferences.menuBarTitle)
                     .disabled(!preferences.showMenuBarIcon)

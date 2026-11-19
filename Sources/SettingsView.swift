@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var preferences: Preferences
@@ -49,6 +50,13 @@ private struct MiniPlayerSettings: View {
                 Picker("Обложка", selection: $preferences.popupCoverShape) {
                     ForEach(ArtworkShape.allCases) { Text($0.title).tag($0) }
                 }
+                Toggle("Пластинка крутится, пока играет музыка", isOn: $preferences.popupSpinsRecord)
+                    .disabled(preferences.popupCoverShape != .circle)
+                Picker("Эквалайзер", selection: $preferences.popupVisualizer) {
+                    ForEach(PopupVisualizer.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Анимация идёт только пока мини-плеер открыт и играет музыка, поэтому батарею она почти не тратит. Полоски двигаются в такт условно: TrackPin не слушает звук Spotify.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Громкость", isOn: $preferences.popupShowsVolume)
                 Toggle("Перемешивание и повтор", isOn: $preferences.popupShowsModes)
                 Toggle("Текст песни", isOn: $preferences.popupShowsLyrics)
@@ -86,7 +94,12 @@ private struct AppearanceSettings: View {
         HStack(spacing: 0) {
             Form {
                 Section("Тема") {
-                    ThemeGrid(selection: $preferences.style.theme, palette: publisher.snapshot.palette)
+                    ThemeGrid(selection: $preferences.style.theme, palette: publisher.snapshot.palette,
+                              custom: preferences.style.customTheme)
+                    if preferences.style.theme == .custom {
+                        CustomThemeEditor(theme: $preferences.style.customTheme, palette: publisher.snapshot.palette)
+                    }
+                    ThemeFileButtons(preferences: preferences)
                 }
                 Section("Содержимое") {
                     Picker("Обложка", selection: $preferences.style.artwork) {
@@ -162,12 +175,13 @@ private struct AppearanceSettings: View {
 private struct ThemeGrid: View {
     @Binding var selection: WidgetTheme
     let palette: ArtworkPalette?
+    let custom: CustomTheme
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 12) {
             ForEach(WidgetTheme.allCases) { theme in
-                let colors = theme.colors(palette: palette ?? WidgetSnapshot.preview.palette, scheme: scheme)
+                let colors = theme.colors(palette: palette ?? WidgetSnapshot.preview.palette, scheme: scheme, custom: custom)
                 let selected = selection == theme
                 Button { selection = theme } label: {
                     VStack(spacing: 5) {
@@ -177,8 +191,8 @@ private struct ThemeGrid: View {
                                 Circle().fill(colors.accent).frame(width: 12, height: 12).padding(6)
                             }
                             .overlay(alignment: .topLeading) {
-                                if theme == .artwork || theme == .blur {
-                                    Image(systemName: theme == .blur ? "drop.fill" : "photo")
+                                if theme == .artwork || theme == .blur || theme == .custom {
+                                    Image(systemName: theme == .blur ? "drop.fill" : theme == .custom ? "paintpalette.fill" : "photo")
                                         .font(.system(size: 10, weight: .semibold))
                                         .foregroundStyle(colors.primary.opacity(0.8))
                                         .padding(6)
@@ -203,6 +217,102 @@ private struct ThemeGrid: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: Theme editor
+
+/// Colors of the "Своя" theme. Changes reach the widget right away, like any other setting.
+private struct CustomThemeEditor: View {
+    @Binding var theme: CustomTheme
+    let palette: ArtworkPalette?
+
+    var body: some View {
+        TextField("Название", text: $theme.name)
+        ColorPicker("Фон сверху", selection: color(\.top), supportsOpacity: false)
+        ColorPicker("Фон снизу", selection: color(\.bottom), supportsOpacity: false)
+        ColorPicker("Акцент: кнопки и прогресс", selection: color(\.accent), supportsOpacity: false)
+        HStack {
+            Button("Взять цвета обложки") {
+                guard let palette else { return }
+                theme.top = palette.top
+                theme.bottom = palette.bottom
+                theme.accent = palette.accent
+            }
+            .disabled(palette == nil)
+            .help("Цвета текущей обложки станут постоянными и не будут меняться вместе с треком")
+            Button("Поменять фон местами") { swap(&theme.top, &theme.bottom) }
+            Spacer()
+            Button("Сбросить") { theme = .default }
+        }
+        Text(theme.dark ? "Фон тёмный, поэтому текст будет светлым." : "Фон светлый, поэтому текст будет тёмным. В мини-плеере светлые темы заменяются графитовой.")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    private func color(_ key: WritableKeyPath<CustomTheme, RGB>) -> Binding<Color> {
+        Binding(
+            get: { theme[keyPath: key].color },
+            set: { if let rgb = RGB(color: $0) { theme[keyPath: key] = rgb } })
+    }
+}
+
+/// Export the custom theme to a JSON file and import one.
+private struct ThemeFileButtons: View {
+    @ObservedObject var preferences: Preferences
+    @State private var message: String?
+
+    var body: some View {
+        HStack {
+            Button("Импорт темы…", action: importTheme)
+            Button("Экспорт…", action: exportTheme)
+                .disabled(preferences.style.theme != .custom)
+                .help("Сохранить тему «Своя» в файл JSON, чтобы поделиться ей")
+            Spacer()
+        }
+        if let message {
+            Text(message).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func exportTheme() {
+        let theme = preferences.style.customTheme
+        let panel = NSSavePanel()
+        panel.title = "Экспорт темы"
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(theme.name.replacingOccurrences(of: "/", with: "-")).json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try theme.exportData().write(to: url, options: .atomic)
+            message = "Тема сохранена в «\(url.lastPathComponent)»."
+        } catch {
+            message = "Не получилось сохранить: \(error.localizedDescription)"
+        }
+    }
+
+    private func importTheme() {
+        let panel = NSOpenPanel()
+        panel.title = "Импорт темы"
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            guard data.count < 64 * 1024 else { throw CustomTheme.InvalidFile() }
+            let theme = try CustomTheme.importing(data)
+            preferences.style.customTheme = theme
+            preferences.style.theme = .custom
+            message = "Тема «\(theme.name)» загружена."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+}
+
+extension RGB {
+    /// sRGB components of a color from the color picker.
+    init?(color: Color) {
+        guard let srgb = NSColor(color).usingColorSpace(.sRGB) else { return nil }
+        self.init(r: Double(srgb.redComponent), g: Double(srgb.greenComponent), b: Double(srgb.blueComponent))
     }
 }
 

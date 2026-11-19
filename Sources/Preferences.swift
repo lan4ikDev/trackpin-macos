@@ -62,6 +62,19 @@ enum PopupPlacement: String, CaseIterable, Identifiable {
     }
 }
 
+/// Bars that move with the music in the mini player.
+enum PopupVisualizer: String, CaseIterable, Identifiable {
+    case off, compact, wide
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .off: "Нет"
+        case .compact: "У названия трека"
+        case .wide: "Под обложкой"
+        }
+    }
+}
+
 final class Preferences: ObservableObject {
     private let defaults: UserDefaults
 
@@ -128,6 +141,13 @@ final class Preferences: ObservableObject {
     @Published var popupCoverShape: ArtworkShape {
         didSet { defaults.set(popupCoverShape.rawValue, forKey: Key.popupCoverShape) }
     }
+    /// The "record" cover spins while a track plays.
+    @Published var popupSpinsRecord: Bool {
+        didSet { defaults.set(popupSpinsRecord, forKey: Key.popupSpinsRecord) }
+    }
+    @Published var popupVisualizer: PopupVisualizer {
+        didSet { defaults.set(popupVisualizer.rawValue, forKey: Key.popupVisualizer) }
+    }
     @Published var didOnboard: Bool {
         didSet { defaults.set(didOnboard, forKey: Key.didOnboard) }
     }
@@ -156,6 +176,8 @@ final class Preferences: ObservableObject {
         static let popupShowsModes = "popupShowsModes"
         static let popupCoverShape = "popupCoverShape"
         static let popupShowsLyrics = "popupShowsLyrics"
+        static let popupSpinsRecord = "popupSpinsRecord"
+        static let popupVisualizer = "popupVisualizer"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -190,6 +212,8 @@ final class Preferences: ObservableObject {
         popupShowsModes = defaults.object(forKey: Key.popupShowsModes) as? Bool ?? true
         popupShowsLyrics = defaults.object(forKey: Key.popupShowsLyrics) as? Bool ?? true
         popupCoverShape = defaults.string(forKey: Key.popupCoverShape).flatMap(ArtworkShape.init(rawValue:)) ?? .rounded
+        popupSpinsRecord = defaults.object(forKey: Key.popupSpinsRecord) as? Bool ?? true
+        popupVisualizer = defaults.string(forKey: Key.popupVisualizer).flatMap(PopupVisualizer.init(rawValue:)) ?? .compact
     }
 
     func resetStyle() { style = WidgetStyle() }

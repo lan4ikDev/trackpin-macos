@@ -158,11 +158,18 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
         if preferences.popupClosesOnClickOutside { close() }
     }
+
+    /// Stops the cover animations while the panel is covered, on another Space or the display sleeps.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let panel else { return }
+        model.onScreen = panel.occlusionState.contains(.visible)
+    }
 }
 
 final class MiniPlayerModel: ObservableObject {
     @Published var presented = false
     @Published var anchor: UnitPoint = .center
+    @Published var onScreen = true
 }
 
 final class MiniPanel: NSPanel {
@@ -193,7 +200,7 @@ struct MiniPlayerView: View {
     private var corner: CGFloat { preferences.popupSize == .large ? 30 : 26 }
 
     private var colors: ThemeColors {
-        let themed = preferences.style.theme.colors(palette: publisher.snapshot.palette, scheme: .dark)
+        let themed = preferences.style.colors(palette: publisher.snapshot.palette, scheme: .dark)
         return themed.dark ? themed : WidgetTheme.graphite.colors(palette: publisher.snapshot.palette, scheme: .dark)
     }
 
@@ -223,7 +230,8 @@ struct MiniPlayerView: View {
         case let .track(track):
             TrackCard(player: player, preferences: preferences, publisher: publisher, sleepTimer: sleepTimer, lyrics: lyrics, track: track,
                       accent: colors.accent, width: width, padding: padding, corner: corner,
-                      hovering: hovering, close: close, showSettings: showSettings)
+                      hovering: hovering, animating: model.presented && model.onScreen && track.playing,
+                      close: close, showSettings: showSettings)
         case .closed:
             message("music.note", "Spotify закрыт", "Запусти Spotify, и здесь появится трек.", "Открыть Spotify", player.openSpotify)
         case .idle:
@@ -300,14 +308,23 @@ private struct TrackCard: View {
     let padding: CGFloat
     let corner: CGFloat
     let hovering: Bool
+    /// The panel is open, on screen and the track plays: the record spins and the bars move.
+    let animating: Bool
     let close: () -> Void
     let showSettings: () -> Void
 
     @State private var copied = false
 
+    private var spins: Bool { preferences.popupCoverShape == .circle && preferences.popupSpinsRecord }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             cover
+            if preferences.popupVisualizer == .wide {
+                Equalizer(bars: 28, active: animating, color: accent)
+                    .frame(height: 22)
+                    .accessibilityHidden(true)
+            }
             info
             if sleepTimer.isActive { sleepStatus }
             ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime)
@@ -346,12 +363,17 @@ private struct TrackCard: View {
                     .foregroundStyle(accent)
             }
             if preferences.popupCoverShape == .circle {
+                // Vinyl grooves and the spindle hole.
+                ForEach([0.94, 0.82, 0.7, 0.58], id: \.self) { ratio in
+                    Circle().strokeBorder(.black.opacity(0.16), lineWidth: 1).frame(width: coverSide * ratio)
+                }
                 Circle().fill(.black.opacity(0.85)).frame(width: coverSide * 0.12)
                     .overlay(Circle().strokeBorder(.white.opacity(0.3), lineWidth: 1))
             }
         }
         .frame(width: coverSide, height: coverSide)
         .clipShape(coverShape)
+        .modifier(Spin(active: spins && animating))
         .scaleEffect(track.playing || preferences.popupCoverShape == .circle ? 1 : 0.92)
         .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
         .animation(.spring(response: 0.45, dampingFraction: 0.75), value: track.playing)
@@ -436,6 +458,11 @@ private struct TrackCard: View {
             .id(track.id)
             .transition(.opacity)
             Spacer(minLength: 0)
+            if preferences.popupVisualizer == .compact {
+                Equalizer(bars: 4, active: animating, color: accent)
+                    .frame(width: 18, height: 16)
+                    .accessibilityHidden(true)
+            }
             Button {
                 preferences.popupShowsLyrics.toggle()
             } label: {
@@ -722,6 +749,72 @@ private struct SyncedLyrics: View {
         guard let current else { return 0.45 }
         if line.id == current { return 1 }
         return line.id < current ? 0.3 : 0.45
+    }
+}
+
+/// Turns the record cover at a calm, constant speed. It keeps its angle on pause, and the
+/// timeline stops completely while `active` is false, so a paused or hidden player costs nothing.
+private struct Spin: ViewModifier {
+    let active: Bool
+    /// Degrees per second: one turn in 8 seconds.
+    private let speed = 45.0
+
+    @State private var base = 0.0
+    @State private var since: Date?
+
+    func body(content: Content) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active)) { context in
+            content.rotationEffect(.degrees(angle(at: context.date)))
+        }
+        .onChange(of: active, initial: true) { _, running in
+            if running {
+                since = Date()
+            } else {
+                base = angle(at: Date())
+                since = nil
+            }
+        }
+    }
+
+    private func angle(at date: Date) -> Double {
+        guard let since else { return base }
+        return (base + max(0, date.timeIntervalSince(since)) * speed).truncatingRemainder(dividingBy: 360)
+    }
+}
+
+/// Dancing bars while music plays. TrackPin cannot hear the audio Spotify plays (that would
+/// need the screen recording permission), so the motion is generated, not measured. Drawn with
+/// a single Canvas at 24 frames per second, and not at all while `active` is false.
+struct Equalizer: View {
+    let bars: Int
+    let active: Bool
+    let color: Color
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24, paused: !active)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            Canvas { canvas, size in
+                guard bars > 0 else { return }
+                let gap = max(1.5, size.width / CGFloat(bars) * 0.3)
+                let width = max(1, (size.width - gap * CGFloat(bars - 1)) / CGFloat(bars))
+                for index in 0..<bars {
+                    let level = active ? Self.level(index, at: time) : 0.12
+                    let height = max(width, size.height * level)
+                    let rect = CGRect(x: CGFloat(index) * (width + gap), y: size.height - height, width: width, height: height)
+                    canvas.fill(Path(roundedRect: rect, cornerRadius: width / 2), with: .color(color.opacity(active ? 0.9 : 0.5)))
+                }
+            }
+        }
+    }
+
+    /// A mix of a few sines with a different speed and phase per bar, 0.12...1.
+    static func level(_ index: Int, at time: Double) -> CGFloat {
+        let x = Double(index)
+        let value = 0.5
+            + 0.26 * sin(time * (4.3 + x.truncatingRemainder(dividingBy: 3) * 1.1) + x * 1.7)
+            + 0.18 * sin(time * 7.9 + x * 0.83)
+            + 0.08 * sin(time * 13.1 + x * 2.9)
+        return CGFloat(min(max(value, 0.12), 1))
     }
 }
 

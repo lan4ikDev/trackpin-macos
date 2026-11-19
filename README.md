@@ -15,8 +15,11 @@ progress, and has playback buttons that work right on the desktop.
 - **Interactive buttons** built with App Intents: previous, play/pause, next, and rewind / fast
   forward by 5, 10, 15 or 30 seconds. The same actions are available in the Shortcuts app.
 - **Settings window** with a live preview:
-  - 9 themes: colors sampled from the current cover, blurred cover, system light/dark,
-    graphite, plum, forest, ocean, sunset and paper;
+  - 10 themes: colors sampled from the current cover, blurred cover, system light/dark,
+    graphite, plum, forest, ocean, sunset, paper and a custom one;
+  - theme editor for the custom theme (two background colors and an accent, or the colors
+    of the current cover), export to and import from a JSON file:
+    `{"format": "trackpin-theme", "version": 1, "name": "Ночь", "top": "#1E2A38", "bottom": "#0B1220", "accent": "#8CE6FF"}`;
   - cover shape (rounded, square, record), header, artist, progress bar and time on or off;
   - button set and seek step;
   - per widget overrides of the theme and buttons (right click on the widget → Edit Widget);
@@ -27,7 +30,9 @@ progress, and has playback buttons that work right on the desktop.
   point. Most of it is the album cover, below it the track, a seek bar, playback buttons,
   shuffle, repeat and volume. Space, arrows and Esc work while it is open. Size, background
   (blurred cover, widget theme or glass), cover shape, placement and the opening animation
-  are configurable. ⌃⌥P toggles it from anywhere; the menu bar icon opens it with a left click.
+  are configurable. With the record cover the disc spins while a track plays, and an
+  equalizer (next to the title or under the cover) moves with the music. Both animate only
+  while the mini player is open, on screen and playing. ⌃⌥P toggles it from anywhere; the menu bar icon opens it with a left click.
 - **Global shortcuts**: ⌃⌥Space play/pause, ⌃⌥→ next, ⌃⌥← previous (can be turned off).
 - **Sleep timer**: pause after 15–90 minutes (the volume fades out first) or at the end of the
   track, from the mini player's moon button or the menu bar menu.

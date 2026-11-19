@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// Which playback buttons the widget shows.
 enum ControlSet: String, Codable, CaseIterable, Identifiable {
@@ -41,6 +41,8 @@ struct WidgetStyle: Codable, Equatable {
     var showArtist = true
     var showProgress = true
     var showTime = true
+    /// Colors of the "custom" theme, made in the theme editor.
+    var customTheme: CustomTheme = .default
 
     static let seekSteps = [5, 10, 15, 30]
 
@@ -58,6 +60,12 @@ struct WidgetStyle: Codable, Equatable {
         showArtist = (try? c.decode(Bool.self, forKey: .showArtist)) ?? fallback.showArtist
         showProgress = (try? c.decode(Bool.self, forKey: .showProgress)) ?? fallback.showProgress
         showTime = (try? c.decode(Bool.self, forKey: .showTime)) ?? fallback.showTime
+        customTheme = (try? c.decode(CustomTheme.self, forKey: .customTheme)) ?? fallback.customTheme
         if !Self.seekSteps.contains(seekStep) { seekStep = fallback.seekStep }
+    }
+
+    /// Colors of the chosen theme, including the custom one.
+    func colors(palette: ArtworkPalette?, scheme: ColorScheme) -> ThemeColors {
+        theme.colors(palette: palette, scheme: scheme, custom: customTheme)
     }
 }

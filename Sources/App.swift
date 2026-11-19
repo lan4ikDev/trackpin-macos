@@ -34,7 +34,7 @@ enum MiniPlayerRender {
         if CommandLine.arguments.contains("--sleep") { sleep.start(.minutes(30)) }
         let view = MiniPlayerView(player: player, preferences: Preferences(defaults: UserDefaults(suiteName: "render") ?? .standard),
                                   publisher: WidgetPublisher(), history: PlayHistory(fileURL: nil), model: model,
-                                  sleepTimer: sleep, close: {}, showSettings: {})
+                                  sleepTimer: sleep, lyrics: LyricsStore(), close: {}, showSettings: {})
             .background(Color(white: 0.85))
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2

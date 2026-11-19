@@ -443,6 +443,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .player: miniPlayer.toggleFromWidget(at: NSEvent.mouseLocation)
                 case .settings: showSettings()
                 }
+            case "reload": publisher.reloadWidgets()
             case "settings": showSettings()
             case "player": miniPlayer.toggleFromWidget(at: NSEvent.mouseLocation)
             case "toggle": perform(.toggle, step: 15) {}

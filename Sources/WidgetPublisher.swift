@@ -29,6 +29,9 @@ final class WidgetPublisher: ObservableObject {
     /// A new cover is loading; the widget reload waits for it (at most two seconds).
     private var waitingForCover = false
     private var pendingReload: DispatchWorkItem?
+    /// When the widget extension last asked for a snapshot.
+    private var lastConnection = Date.distantPast
+    private var lastRevival = Date.distantPast
     private var suppressedUntil = Date.distantPast
 
     init() {
@@ -57,6 +60,7 @@ final class WidgetPublisher: ObservableObject {
 
     private func serve(_ connection: NWConnection) {
         Log.player.notice("widget connection")
+        lastConnection = Date()
         connection.start(queue: .main)
         receiveLine(on: connection, buffer: Data())
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { connection.cancel() }
@@ -153,10 +157,33 @@ final class WidgetPublisher: ObservableObject {
         let work = DispatchWorkItem { [weak self] in
             self?.pendingReload = nil
             guard let self, Date() >= self.suppressedUntil else { return }
+            Log.player.notice("reload widgets")
             WidgetCenter.shared.reloadAllTimelines()
+            self.watchReload()
         }
         pendingReload = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+    }
+
+    /// Sometimes the widget extension stops answering reload requests (its process hangs),
+    /// and the widget freezes until it is restarted. If a reload brings no request for a
+    /// snapshot within a few seconds, end the extension's process: the system starts a fresh
+    /// one, and the reload is asked for again. At most once every two minutes.
+    private func watchReload() {
+        let requested = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self, self.lastConnection < requested,
+                  Date().timeIntervalSince(self.lastRevival) > 120 else { return }
+            self.lastRevival = Date()
+            Log.player.notice("widget did not answer the reload, restarting the extension")
+            let kill = Process()
+            kill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            kill.arguments = ["-x", "TrackPinWidget"]
+            try? kill.run()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
+        }
     }
 
     private func suppressReloads(for seconds: TimeInterval) {
@@ -179,6 +206,8 @@ final class WidgetPublisher: ObservableObject {
     }
 
     func reloadWidgets() {
+        Log.player.notice("reload widgets (explicit)")
+        defer { watchReload() }
         pendingReload?.cancel()
         pendingReload = nil
         WidgetCenter.shared.reloadAllTimelines()

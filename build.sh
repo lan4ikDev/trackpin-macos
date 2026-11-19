@@ -1,35 +1,28 @@
 #!/bin/bash
+# Builds TrackPin.app from the command line.
+#
+#   TRACKPIN_TEAM=ABCDE12345 ./build.sh     # signed with your development certificate (recommended)
+#   ./build.sh                              # ad hoc signature, the widget may not show up in the gallery
 set -euo pipefail
-
 project="$(cd "$(dirname "$0")" && pwd)"
 output="${1:-$project/build}"
-app="$output/TrackPin.app"
-extension="$app/Contents/PlugIns/TrackPinWidget.appex"
-generated="$output/.generated"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$extension/Contents/MacOS" "$generated"
-cp "$project/Info.plist" "$app/Contents/Info.plist"
-cp "$project/Assets/TrackPin.icns" "$app/Contents/Resources/TrackPin.icns"
-cp "$project/NativeWidget/Info.plist" "$extension/Contents/Info.plist"
+cd "$project"
+./bootstrap.sh >/dev/null
 
-if [[ ! -s "$generated/TrackPinBuild.swift" ]]; then
-    port="$(( 49152 + RANDOM % 16384 ))"
-    token="$(/usr/bin/uuidgen)"
-    cat > "$generated/TrackPinBuild.swift" <<GEN
-enum TrackPinBuild {
-    static let port: UInt16 = $port
-    static let token = "$token"
-}
-GEN
+signing=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=)
+if [[ -n "${TRACKPIN_TEAM:-}" ]]; then
+    signing=(DEVELOPMENT_TEAM="$TRACKPIN_TEAM" CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates)
+else
+    echo "warning: TRACKPIN_TEAM is not set, signing ad hoc. macOS may hide the widget from the gallery." >&2
 fi
 
-options=(-swift-version 5 -target "$(uname -m)-apple-macosx14.0"
-    -module-cache-path "$output/.module-cache" -O)
-xcrun swiftc "${options[@]}" -module-name TrackPin -o "$app/Contents/MacOS/TrackPin" \
-    "$project"/Sources/*.swift "$project"/Shared/*.swift "$generated/TrackPinBuild.swift"
-xcrun swiftc "${options[@]}" -application-extension -module-name TrackPinWidget \
-    -o "$extension/Contents/MacOS/TrackPinWidget" \
-    "$project"/NativeWidget/*.swift "$project"/Shared/*.swift "$generated/TrackPinBuild.swift"
-codesign --force --sign - --entitlements "$project/NativeWidget/Entitlements.plist" "$extension"
-codesign --force --sign - "$app"
-codesign --verify --deep --strict "$app"
-"$app/Contents/MacOS/TrackPin" --self-test
+xcodebuild -project TrackPin.xcodeproj -scheme TrackPin -configuration Release \
+    -derivedDataPath "$output/DerivedData" "${signing[@]}" build | grep -E "error|warning: |BUILD" || true
+app="$output/DerivedData/Build/Products/Release/TrackPin.app"
+[[ -d "$app" ]] || { echo "Build failed" >&2; exit 1; }
+rm -rf "$output/TrackPin.app"
+cp -R "$app" "$output/TrackPin.app"
+codesign --verify --deep --strict "$output/TrackPin.app"
+"$output/TrackPin.app/Contents/MacOS/TrackPin" --self-test
+echo "Built $output/TrackPin.app"
+echo "Move it to /Applications and open it once, then add the widget from the desktop's \"Edit Widgets\" menu."

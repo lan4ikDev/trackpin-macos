@@ -1,0 +1,77 @@
+# Xcode project for TrackPin. Generate it with ./bootstrap.sh (or `xcodegen generate`)
+# and open TrackPin.xcodeproj. The generated project is not committed.
+name: TrackPin
+options:
+  bundleIdPrefix: dev.lan4ik
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  developmentLanguage: ru
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "3.1"
+    CURRENT_PROJECT_VERSION: "5"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Set TRACKPIN_TEAM to your Apple developer team id (a free Apple ID team works),
+    # or pick the team in Xcode under Signing & Capabilities. macOS lists widgets
+    # reliably only from apps signed with a development certificate.
+    DEVELOPMENT_TEAM: "$(TRACKPIN_TEAM)"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    DEAD_CODE_STRIPPING: YES
+targets:
+  TrackPin:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+      - path: Shared
+      - path: Generated/TrackPinBuild.swift
+      - path: Assets/TrackPin.icns
+        buildPhase: resources
+    dependencies:
+      - target: TrackPinWidget
+    settings:
+      base:
+        PRODUCT_NAME: TrackPin
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lan4ik.needle
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_ENTITLEMENTS: TrackPin.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+  TrackPinWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: NativeWidget
+        excludes:
+          - "*.plist"
+      - path: Shared
+      - path: Generated/TrackPinBuild.swift
+    settings:
+      base:
+        PRODUCT_NAME: TrackPinWidget
+        PRODUCT_BUNDLE_IDENTIFIER: dev.lan4ik.needle.widget
+        INFOPLIST_FILE: NativeWidget/Info.plist
+        CODE_SIGN_ENTITLEMENTS: NativeWidget/Entitlements.plist
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+    # The extension builds first, so it recreates the shared loopback settings if they were deleted.
+    preBuildScripts:
+      - name: Generate loopback settings
+        script: '"$SRCROOT/scripts/configure.sh"'
+        outputFiles:
+          - $(SRCROOT)/Generated/TrackPinBuild.swift
+        basedOnDependencyAnalysis: false
+schemes:
+  TrackPin:
+    build:
+      targets:
+        TrackPin: all
+        TrackPinWidget: all
+    run:
+      config: Debug
+    archive:
+      config: Release

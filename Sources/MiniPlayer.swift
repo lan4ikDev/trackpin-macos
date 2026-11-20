@@ -67,6 +67,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         if !panel.isVisible { model.presented = false }
         panel.orderFrontRegardless()
         panel.makeKey()
+        startGestures()
         onVisibilityChange(true)
         // A calm, fully damped spring: no overshoot, no bounce.
         let animation: Animation? = preferences.popupAnimated ? .spring(response: 0.5, dampingFraction: 1) : nil
@@ -92,6 +93,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         closedAt = Date()
         let animated = preferences.popupAnimated
         withAnimation(animated ? .easeInOut(duration: 0.22) : nil) { model.presented = false }
+        stopGestures()
         let work = DispatchWorkItem { [weak self] in
             panel.orderOut(nil)
             self?.closing = nil
@@ -99,6 +101,76 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         }
         closing = work
         DispatchQueue.main.asyncAfter(deadline: .now() + (animated ? 0.23 : 0), execute: work)
+    }
+
+    // MARK: Gestures
+
+    private var scrollMonitor: Any?
+    /// Horizontal distance of the current trackpad gesture, and whether it already switched.
+    private var swipeDistance: CGFloat = 0
+    private var swipeDone = false
+    /// The volume being set by scrolling; the player's reported value lags behind.
+    private var scrollVolume: Double?
+    private var scrollVolumeAt = Date.distantPast
+
+    private func startGestures() {
+        guard scrollMonitor == nil else { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, self.preferences.popupGestures, event.window === self.panel,
+                  !self.isOverScrollableContent(event) else { return event }
+            return self.handleScroll(event) ? nil : event
+        }
+    }
+
+    private func stopGestures() {
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+        scrollMonitor = nil
+    }
+
+    /// The lyrics and the history scroll on their own; gestures apply everywhere else.
+    private func isOverScrollableContent(_ event: NSEvent) -> Bool {
+        guard let content = panel?.contentView,
+              var view = content.hitTest(content.convert(event.locationInWindow, from: nil)) else { return false }
+        while let parent = view.superview {
+            if let scroll = view as? NSScrollView, scroll.hasVerticalScroller || scroll.documentView != nil {
+                return (scroll.documentView?.frame.height ?? 0) > scroll.contentSize.height + 1
+            }
+            view = parent
+        }
+        return false
+    }
+
+    /// Returns true when the event was used.
+    private func handleScroll(_ event: NSEvent) -> Bool {
+        // The direction the fingers (or the wheel) actually moved, whatever "natural scrolling" is.
+        let sign: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
+        let dx = event.scrollingDeltaX * sign
+        let dy = event.scrollingDeltaY * sign
+        if event.phase == .began { swipeDistance = 0; swipeDone = false }
+        if !event.momentumPhase.isEmpty { return true } // Ignore the inertia after a swipe.
+
+        if abs(dx) > abs(dy) {
+            guard event.hasPreciseScrollingDeltas else { return false }
+            swipeDistance += dx
+            if !swipeDone, abs(swipeDistance) > 70 {
+                swipeDone = true
+                // Fingers to the left: next track, like pushing the card away.
+                player.send(swipeDistance < 0 ? .next : .previous)
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            }
+            if event.phase == .ended || event.phase == .cancelled { swipeDistance = 0; swipeDone = false }
+            return true
+        }
+
+        guard dy != 0, let current = player.playback.currentTrack?.volume else { return dy != 0 }
+        if scrollVolume == nil || Date().timeIntervalSince(scrollVolumeAt) > 1.5 { scrollVolume = Double(current) }
+        // Trackpads report pixels, mouse wheels report lines.
+        let step = event.hasPreciseScrollingDeltas ? Double(dy) * 0.35 : Double(dy) * 4
+        let volume = min(100, max(0, (scrollVolume ?? Double(current)) - step))
+        scrollVolume = volume
+        scrollVolumeAt = Date()
+        player.send(.volume(Int(volume.rounded())))
+        return true
     }
 
     private func makePanel() -> MiniPanel {

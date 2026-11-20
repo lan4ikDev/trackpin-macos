@@ -67,7 +67,6 @@ final class WidgetPublisher: ObservableObject {
     // MARK: Server
 
     private func serve(_ connection: NWConnection) {
-        Log.player.notice("widget connection")
         lastConnection = Date()
         connection.start(queue: .main)
         receiveLine(on: connection, buffer: Data())
@@ -109,7 +108,10 @@ final class WidgetPublisher: ObservableObject {
         connection.send(content: response, contentContext: .finalMessage, isComplete: true,
                         completion: .contentProcessed { [weak self] error in
             if error != nil { connection.cancel() } else { self?.lastServed = sent }
-            Log.player.notice("sent \(sent.playback.currentTrack?.title ?? "-"), cover: \(sent.cover != nil), error: \(error != nil)")
+            // Only the unusual case: a track with artwork sent without its cover.
+            if let track = sent.playback.currentTrack, track.artwork != nil, sent.cover == nil {
+                Log.player.notice("sent \(track.title) without its cover yet")
+            }
         })
     }
 
@@ -168,7 +170,7 @@ final class WidgetPublisher: ObservableObject {
 
     private func finishedLoading(_ url: URL, _ loaded: Artwork.Loaded?) {
         loading[url] = nil
-        Log.player.notice("cover \(loaded == nil ? "failed" : "loaded")\(url == coverURL ? "" : " (for an earlier track)")")
+        if loaded == nil { Log.player.notice("cover failed: \(url.absoluteString)") }
         if let loaded {
             covers[url] = loaded
             coverOrder.removeAll { $0 == url }

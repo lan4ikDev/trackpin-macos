@@ -113,6 +113,22 @@
         }
       }
     },
+    "%lld ч %lld мин": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lldh %lld min"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ч %lld мин"
+          }
+        }
+      }
+    },
     "%lld%%": {
       "localizations": {
         "en": {
@@ -125,6 +141,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld%%"
+          }
+        }
+      }
+    },
+    "%lld. %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld. %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld. %@"
+          }
+        }
+      }
+    },
+    "%lld×": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld×"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld×"
           }
         }
       }
@@ -221,6 +269,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "TrackPin показывает тот плеер, который сейчас играет: Spotify, Apple Music или приложение Яндекс Музыки. Браузер проверяется, только если включить переключатель выше."
+          }
+        }
+      }
+    },
+    "TrackPin считает сам, пока он запущен, и хранит статистику только на этом Mac, 60 дней.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TrackPin counts by itself while it runs and keeps the statistics only on this Mac, for 60 days."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "TrackPin считает сам, пока он запущен, и хранит статистику только на этом Mac, 60 дней."
           }
         }
       }
@@ -625,6 +689,22 @@
         }
       }
     },
+    "Время прослушивания": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening time"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Время прослушивания"
+          }
+        }
+      }
+    },
     "Время трека": {
       "localizations": {
         "en": {
@@ -833,6 +913,22 @@
         }
       }
     },
+    "День": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "День"
+          }
+        }
+      }
+    },
     "Доступ и помощь": {
       "localizations": {
         "en": {
@@ -845,6 +941,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "Доступ и помощь"
+          }
+        }
+      }
+    },
+    "Жесты: свайп переключает трек, прокрутка меняет громкость": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gestures: swipe switches tracks, scrolling changes the volume"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Жесты: свайп переключает трек, прокрутка меняет громкость"
+          }
+        }
+      }
+    },
+    "За 7 дней": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last 7 days"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "За 7 дней"
           }
         }
       }
@@ -1357,6 +1485,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Мини-плеер открывается рядом с местом, где ты нажал на виджет, и закрывается кликом мимо него или клавишей Esc."
+          }
+        }
+      }
+    },
+    "Минуты": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minutes"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Минуты"
           }
         }
       }
@@ -2097,6 +2241,22 @@
         }
       }
     },
+    "Очистить статистику": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear statistics"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить статистику"
+          }
+        }
+      }
+    },
     "Пауза": {
       "localizations": {
         "en": {
@@ -2557,6 +2717,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Пока открыт мини-плеер или настройки"
+          }
+        }
+      }
+    },
+    "Пока пусто": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing yet"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пока пусто"
           }
         }
       }
@@ -3185,6 +3361,38 @@
         }
       }
     },
+    "Статистика": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Statistics"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Статистика"
+          }
+        }
+      }
+    },
+    "Статистика выключена вместе с историей: включи «Запоминать прослушанные треки» на вкладке «Мини-плеер».": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Statistics are off together with the history: turn on “Remember played tracks” on the Mini player tab."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Статистика выключена вместе с историей: включи «Запоминать прослушанные треки» на вкладке «Мини-плеер»."
+          }
+        }
+      }
+    },
     "Стекло": {
       "localizations": {
         "en": {
@@ -3389,6 +3597,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Только по событиям плеера"
+          }
+        }
+      }
+    },
+    "Топ исполнителей": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top artists"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Топ исполнителей"
           }
         }
       }
@@ -3633,6 +3857,22 @@
         }
       }
     },
+    "Чаще всего играли": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Most played"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чаще всего играли"
+          }
+        }
+      }
+    },
     "Через %lld мин": {
       "localizations": {
         "en": {
@@ -3853,6 +4093,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Яндекс Музыка (приложение)"
+          }
+        }
+      }
+    },
+    "мин": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "min"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "мин"
           }
         }
       }

@@ -15,6 +15,11 @@ enum TrackPinApp {
             MiniPlayerRender.write(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
             return
         }
+        if let index = CommandLine.arguments.firstIndex(of: "--render-stats"),
+           CommandLine.arguments.indices.contains(index + 1) {
+            MiniPlayerRender.writeStats(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+            return
+        }
         if let index = CommandLine.arguments.firstIndex(of: "--render-settings"),
            CommandLine.arguments.indices.contains(index + 1) {
             MiniPlayerRender.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[index + 1]))
@@ -69,6 +74,26 @@ enum MiniPlayerRender {
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
         window.orderOut(nil)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+
+    /// The statistics tab with a made-up week of listening.
+    static func writeStats(to url: URL) {
+        let stats = ListeningStats(fileURL: nil)
+        let artists = ["Северный ветер", "Ночной город", "Midnight Drive", "Лес", "Океан"]
+        for dayOffset in 0..<7 {
+            let day = Calendar.current.date(byAdding: .day, value: -dayOffset, to: Date())!
+            var clock = Calendar.current.startOfDay(for: day).addingTimeInterval(18 * 3600)
+            for index in 0..<(3 + (dayOffset * 7) % 9) {
+                let artist = artists[(index + dayOffset) % artists.count]
+                let id = "\(dayOffset)-\(index)"
+                stats.observe(.track(Track(id: id, title: "Трек \(index + 1)", artist: artist, artwork: nil,
+                                           duration: 200, position: 0, playing: true)), at: clock)
+                clock = clock.addingTimeInterval(200)
+                stats.observe(.track(Track(id: id, title: "Трек \(index + 1)", artist: artist, artwork: nil,
+                                           duration: 200, position: 200, playing: false)), at: clock)
+            }
+        }
+        drawWithAppKit(StatsView(stats: stats, enabled: true).frame(width: 600, height: 640), to: url)
     }
 
     private static var wallpaper: some View {
@@ -231,6 +256,24 @@ enum SelfTest {
               (try? CustomTheme.importing(Data(##"{"format":"other","top":"#000000","bottom":"#000000","accent":"#FFFFFF"}"##.utf8))) == nil else {
             fatalError("Theme files could not be read")
         }
+        // Listening time: 30 s of A, a seek forward that must not count, A ends, B starts.
+        MainActor.assumeIsolated {
+            let stats = ListeningStats(fileURL: nil)
+            let start = Date()
+            func track(_ id: String, _ position: Double, playing: Bool = true) -> Playback {
+                .track(Track(id: id, title: id, artist: "Artist \(id)", artwork: nil, duration: 200, position: position, playing: playing))
+            }
+            stats.observe(track("A", 10), at: start)
+            stats.observe(track("A", 40), at: start.addingTimeInterval(30))
+            stats.observe(track("A", 150), at: start.addingTimeInterval(35)) // seek: at most 7 s
+            stats.observe(track("B", 0), at: start.addingTimeInterval(85))   // A played its last 50 s
+            stats.observe(track("B", 20, playing: false), at: start.addingTimeInterval(105))
+            let day = stats.days[ListeningStats.key(for: start)] ?? .init()
+            guard abs((day.artists["Artist A"] ?? 0) - 87) < 0.5, abs((day.artists["Artist B"] ?? 0) - 20) < 0.5,
+                  day.tracks["A — Artist A"] == 1, day.tracks["B — Artist B"] == 1 else {
+                fatalError("Listening stats are wrong: \(day)")
+            }
+        }
         print("Self-test passed")
     }
 }
@@ -242,6 +285,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var player = Player(demo: CommandLine.arguments.contains("--demo"))
     private let publisher = WidgetPublisher()
     private let history = PlayHistory(fileURL: CommandLine.arguments.contains("--demo") ? nil : PlayHistory.defaultURL)
+    private let stats = ListeningStats(fileURL: CommandLine.arguments.contains("--demo") ? nil : ListeningStats.defaultURL)
     private lazy var miniPlayer = MiniPlayerController(player: player, preferences: preferences, publisher: publisher,
                                                        history: history, sleepTimer: sleepTimer)
     private var observations: Set<AnyCancellable> = []
@@ -279,6 +323,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &observations)
         preferences.$scansBrowser
             .sink { [weak self] scans in self?.player.scansBrowser = scans }
+            .store(in: &observations)
+        // Stats need every read, paused ones too, to know where listening stopped.
+        player.$playback
+            .sink { [weak self] playback in
+                guard let self, self.preferences.keepHistory else { return }
+                self.stats.observe(playback)
+            }
             .store(in: &observations)
         // `record` ignores repeated reads of the same play, so every playing read can go in.
         player.$playback
@@ -368,6 +419,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         history.flush()
+        stats.flush()
     }
 
     /// Poll the player often only while the user can see a TrackPin window.
@@ -561,6 +613,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showSettings() {
         if settingsWindow == nil {
             let view = SettingsView(preferences: preferences, player: player, publisher: publisher, history: history,
+                                    stats: stats,
                                     updater: updater, showMiniPlayer: { [weak self] in self?.miniPlayer.show() })
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)

@@ -40,8 +40,8 @@ final class AppleMusicBridge: PlayerBackend {
 
     private static let coverSource = wrap("""
         set song to current track
-        if (count of artworks of song) is 0 then return ""
-        return raw data of artwork 1 of song
+        if (count of artworks of song) is 0 then return {persistent ID of song, ""}
+        return {persistent ID of song, raw data of artwork 1 of song}
         """)
 
     static let idPrefix = "music:"
@@ -103,8 +103,17 @@ final class AppleMusicBridge: PlayerBackend {
         coverTrackID = trackID
         if let old = coverFile { try? FileManager.default.removeItem(at: old) }
         coverFile = nil
+        // The id comes with the artwork in one call: the track may change between the snapshot
+        // read and this one, and the next track's cover must not be saved under this id.
         let (result, _) = AppleScript.run(Self.coverSource)
-        guard let data = result?.data, data.count > 64, result?.descriptorType != typeUnicodeText else { return nil }
+        guard let result, result.numberOfItems == 2,
+              Self.idPrefix + (result.atIndex(1)?.stringValue ?? "") == trackID || result.atIndex(1)?.stringValue == trackID else {
+            coverTrackID = nil // Try again on the next read.
+            return nil
+        }
+        guard let artwork = result.atIndex(2), artwork.descriptorType != typeUnicodeText else { return nil }
+        let data = artwork.data
+        guard data.count > 64 else { return nil }
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "TrackPin", isDirectory: true)
             .appendingPathComponent("MusicArtwork", isDirectory: true)

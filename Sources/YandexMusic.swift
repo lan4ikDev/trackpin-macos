@@ -56,7 +56,35 @@ final class YandexAppBridge: PlayerBackend {
             usleep(350_000)
         }
         guard let after = self.scan(root: root, pid: pid) else { return .unavailable }
-        return after.playback
+        return settledCover(after.playback)
+    }
+
+    /// The previous track and its cover, and when the track last changed. Only touched on the
+    /// player queue.
+    private var previousTrackID: String?
+    private var previousCover: URL?
+    private var lastTrackCover: URL?
+    private var trackChangedAt = Date.distantPast
+
+    /// The app updates the title before the cover image when the track changes, so a read can
+    /// see the new title with the old cover. Within two seconds of a change, a cover equal to
+    /// the previous track's is treated as not loaded yet. After that it is accepted: two tracks
+    /// of one album really do share a cover.
+    private func settledCover(_ playback: Playback) -> Playback {
+        guard case var .track(track) = playback else { return playback }
+        if track.id != previousTrackID {
+            previousCover = lastTrackCover
+            previousTrackID = track.id
+            trackChangedAt = Date()
+        }
+        if track.artwork != nil, track.artwork == previousCover, Date().timeIntervalSince(trackChangedAt) < 2 {
+            track = Track(id: track.id, title: track.title, artist: track.artist, artwork: nil,
+                          duration: track.duration, position: track.position, playing: track.playing,
+                          volume: track.volume, shuffling: track.shuffling, repeating: track.repeating)
+            return .track(track)
+        }
+        if track.artwork != nil { lastTrackCover = track.artwork }
+        return .track(track)
     }
 
     // MARK: Scanning

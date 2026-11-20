@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var player: Player
     @ObservedObject var publisher: WidgetPublisher
     @ObservedObject var history: PlayHistory
+    var stats: ListeningStats?
     var updater: Updater?
     let showMiniPlayer: () -> Void
 
@@ -18,6 +19,10 @@ struct SettingsView: View {
                 .tabItem { Label("Мини-плеер", systemImage: "rectangle.portrait.on.rectangle.portrait") }
             GeneralSettings(preferences: preferences, player: player, updater: updater)
                 .tabItem { Label("Основные", systemImage: "gearshape") }
+            if let stats {
+                StatsView(stats: stats, enabled: preferences.keepHistory)
+                    .tabItem { Label("Статистика", systemImage: "chart.bar") }
+            }
             HelpSettings(player: player, publisher: publisher)
                 .tabItem { Label("Доступ и помощь", systemImage: "questionmark.circle") }
         }
@@ -154,6 +159,7 @@ private struct MiniPlayerSettings: View {
                 }
                 Toggle("Анимация открытия", isOn: $preferences.popupAnimated)
                 Toggle("Закрывать при клике мимо", isOn: $preferences.popupClosesOnClickOutside)
+                Toggle("Жесты: свайп переключает трек, прокрутка меняет громкость", isOn: $preferences.popupGestures)
                 Toggle("Горячая клавиша ⌃⌥P открывает и закрывает мини-плеер", isOn: $preferences.hotKey)
             }
             Section {

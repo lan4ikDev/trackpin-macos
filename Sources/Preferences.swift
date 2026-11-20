@@ -167,6 +167,10 @@ final class Preferences: ObservableObject {
     @Published var popupAnimated: Bool {
         didSet { defaults.set(popupAnimated, forKey: Key.popupAnimated) }
     }
+    /// Swipe left/right on the mini player switches tracks, scrolling changes the volume.
+    @Published var popupGestures: Bool {
+        didSet { defaults.set(popupGestures, forKey: Key.popupGestures) }
+    }
     @Published var popupClosesOnClickOutside: Bool {
         didSet { defaults.set(popupClosesOnClickOutside, forKey: Key.popupClosesOnClickOutside) }
     }
@@ -223,6 +227,7 @@ final class Preferences: ObservableObject {
         static let popupAnimated = "popupAnimated"
         static let popupOpacity = "popupOpacity"
         static let popupClosesOnClickOutside = "popupClosesOnClickOutside"
+        static let popupGestures = "popupGestures"
         static let popupShowsVolume = "popupShowsVolume"
         static let popupShowsModes = "popupShowsModes"
         static let popupCoverShape = "popupCoverShape"
@@ -271,6 +276,7 @@ final class Preferences: ObservableObject {
         popupAnimated = defaults.object(forKey: Key.popupAnimated) as? Bool ?? true
         popupOpacity = min(max(defaults.object(forKey: Key.popupOpacity) as? Double ?? 1, 0.3), 1)
         popupClosesOnClickOutside = defaults.object(forKey: Key.popupClosesOnClickOutside) as? Bool ?? true
+        popupGestures = defaults.object(forKey: Key.popupGestures) as? Bool ?? true
         popupShowsVolume = defaults.object(forKey: Key.popupShowsVolume) as? Bool ?? true
         popupShowsModes = defaults.object(forKey: Key.popupShowsModes) as? Bool ?? true
         popupShowsLyrics = defaults.object(forKey: Key.popupShowsLyrics) as? Bool ?? true

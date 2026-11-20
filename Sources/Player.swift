@@ -15,9 +15,18 @@ final class FileLog {
         return formatter
     }()
 
+    /// Above this size the log is moved to TrackPin.old.log and started again.
+    private static let limit: UInt64 = 512 * 1024
+
     func notice(_ message: String) {
         let line = "\(formatter.string(from: Date())) \(message)\n"
         queue.async { [url] in
+            let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? UInt64) ?? 0
+            if size > Self.limit {
+                let old = url.deletingPathExtension().appendingPathExtension("old.log")
+                try? FileManager.default.removeItem(at: old)
+                try? FileManager.default.moveItem(at: url, to: old)
+            }
             if let handle = try? FileHandle(forWritingTo: url) {
                 handle.seekToEndOfFile()
                 handle.write(Data(line.utf8))
@@ -232,7 +241,6 @@ final class Player: NSObject, ObservableObject {
 
     /// Queues a command. `completion` receives the playback state read right after the command ran.
     func send(_ command: PlayerCommand, completion: Completion? = nil) {
-        Log.player.notice("send \(String(describing: command)), busy: \(self.busy)")
         if demo, case var .track(track) = playback {
             switch command {
             case .toggle: track.playing.toggle()

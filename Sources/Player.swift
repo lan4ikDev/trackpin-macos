@@ -118,6 +118,9 @@ final class Player: NSObject, ObservableObject {
     /// `expected` is the play state a play/pause should lead to: Spotify can still report the
     /// old state for a moment right after the command.
     private var pending: [(command: PlayerCommand, completion: Completion?, expected: Bool?)] = []
+    /// The track of the last read. Only touched on `queue`, so a command sees the state right
+    /// before it runs, even when earlier commands' results were never published.
+    private var lastRead: Track?
     private var workspaceObservers: [NSObjectProtocol] = []
     let demo: Bool
 
@@ -317,17 +320,35 @@ final class Player: NSObject, ObservableObject {
         let queued = Date()
         queue.async {
             let started = Date()
+            // After next (or previous near the start of a track) the player can still report the
+            // old track for a moment; remember which one should be gone.
+            var leaving: String?
+            if let before = self.lastRead {
+                if next?.command == .next || (next?.command == .previous && before.position < 3) { leaving = before.id }
+            }
             var result = active.read(command: next?.command)
             // Right after play/pause the player may still answer with the old state. Read again
             // briefly until it agrees, so the widget does not show (and keep) the stale state.
+            // Re-read for at most about 0.8 s: a player at the end of its queue may legitimately
+            // stay on the same track, and the widget is waiting for the answer.
+            let settleBy = Date().addingTimeInterval(0.8)
             if let expected = next?.expected {
                 var attempts = 0
-                while attempts < 6, let track = result.currentTrack, track.playing != expected {
+                while Date() < settleBy, let track = result.currentTrack, track.playing != expected {
                     usleep(120_000)
                     result = active.read(command: nil)
                     attempts += 1
                 }
                 if attempts > 0 { Log.player.notice("play state settled after \(attempts) extra reads") }
+            }
+            if let leaving {
+                var attempts = 0
+                while Date() < settleBy, result.currentTrack?.id == leaving {
+                    usleep(120_000)
+                    result = active.read(command: nil)
+                    attempts += 1
+                }
+                if attempts > 0 { Log.player.notice("next track settled after \(attempts) extra reads") }
             }
             if let command = next?.command {
                 Log.player.notice("command \(String(describing: command)): waited \(Int(started.timeIntervalSince(queued) * 1000)) ms, ran \(Int(Date().timeIntervalSince(started) * 1000)) ms")
@@ -343,6 +364,7 @@ final class Player: NSObject, ObservableObject {
                     }
                 }
             }
+            self.lastRead = result.currentTrack
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 // When the source changed meanwhile (a choice in the settings, or another player

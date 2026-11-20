@@ -230,8 +230,8 @@ struct MiniPlayerView: View {
     private var corner: CGFloat { preferences.popupSize == .large ? 30 : 26 }
 
     private var colors: ThemeColors {
-        let themed = preferences.style.colors(palette: publisher.snapshot.palette, scheme: .dark)
-        return themed.dark ? themed : WidgetTheme.graphite.colors(palette: publisher.snapshot.palette, scheme: .dark)
+        let themed = preferences.style.colors(palette: publisher.displayPalette, scheme: .dark)
+        return themed.dark ? themed : WidgetTheme.graphite.colors(palette: publisher.displayPalette, scheme: .dark)
     }
 
     var body: some View {

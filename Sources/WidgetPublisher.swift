@@ -28,6 +28,11 @@ final class WidgetPublisher: ObservableObject {
     private var artworkTask: Task<Void, Never>?
     /// A new cover is loading; the widget reload waits for it (at most two seconds).
     private var waitingForCover = false
+    /// Tags each cover load, so a timer or task from an earlier switch cannot touch a later one.
+    private var coverGeneration = 0
+    /// The palette for the app's own windows: unlike the widget's, it keeps the previous
+    /// cover's colors while the new cover loads, to avoid a flash of the fallback theme.
+    @Published private(set) var displayPalette: ArtworkPalette?
     private var pendingReload: DispatchWorkItem?
     /// When the widget extension last asked for a snapshot.
     private var lastConnection = Date.distantPast
@@ -98,11 +103,11 @@ final class WidgetPublisher: ObservableObject {
 
     private func reply(on connection: NWConnection) {
         if encoded == nil { encoded = try? JSONEncoder().encode(snapshot) }
-        lastServed = snapshot
+        let sent = snapshot
         guard let response = encoded else { connection.cancel(); return }
         connection.send(content: response, contentContext: .finalMessage, isComplete: true,
-                        completion: .contentProcessed { error in
-            if error != nil { connection.cancel() }
+                        completion: .contentProcessed { [weak self] error in
+            if error != nil { connection.cancel() } else { self?.lastServed = sent }
         })
     }
 
@@ -114,8 +119,10 @@ final class WidgetPublisher: ObservableObject {
         if coverURL != url {
             artworkTask?.cancel()
             coverURL = url
-            // Keep the previous cover until the new one has loaded, so the mini player can
-            // cross-fade between them and the widget reloads once with the new track and cover.
+            coverGeneration += 1
+            let generation = coverGeneration
+            // `coverImage`, `blurredCover` and `displayPalette` keep the previous cover until the
+            // new one has loaded, so the mini player can cross-fade. The widget never gets them.
             if url == nil {
                 cover = nil
                 palette = nil
@@ -127,34 +134,38 @@ final class WidgetPublisher: ObservableObject {
                 waitingForCover = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                     // The cover is slow or failed: show the new track without it.
-                    guard let self, self.waitingForCover, self.coverURL == url else { return }
-                    self.waitingForCover = false
-                    self.cover = nil
-                    self.coverImage = nil
-                    self.blurredCover = nil
-                    self.publish(self.snapshot.playback, style: self.snapshot.style)
+                    guard let self, self.waitingForCover, self.coverGeneration == generation else { return }
+                    self.finishCover(data: nil, palette: nil)
                 }
                 artworkTask = Task { @MainActor [weak self] in
                     let artwork = await Artwork.load(url)
-                    guard !Task.isCancelled, let self, self.coverURL == url else { return }
-                    self.waitingForCover = false
-                    self.cover = artwork?.data
-                    self.palette = artwork?.palette
-                    self.coverImage = artwork.flatMap { NSImage(data: $0.data) }
-                    self.blurredCover = artwork.flatMap { Artwork.blurred($0.data) }
-                    self.publish(self.snapshot.playback, style: self.snapshot.style)
+                    guard !Task.isCancelled, let self, self.coverGeneration == generation else { return }
+                    self.finishCover(data: artwork?.data, palette: artwork?.palette)
                 }
             }
         }
 
-        // While the new cover loads, `cover` still holds the previous track's one (the mini player
-        // cross-fades from it). The widget must never get it next to the new track.
+        // While the new cover loads, `cover` and `palette` still belong to the previous track.
         let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: waitingForCover ? nil : cover,
-                                  palette: palette, style: style, source: source)
+                                  palette: waitingForCover ? nil : palette, style: style, source: source)
         encoded = nil
         let reload = needsReload(from: snapshot, to: next)
         snapshot = next
+        if !waitingForCover { displayPalette = palette }
         if reload && !waitingForCover { scheduleReload() }
+    }
+
+    /// The new cover arrived, failed or timed out (`data == nil`).
+    private func finishCover(data: Data?, palette newPalette: ArtworkPalette?) {
+        waitingForCover = false
+        cover = data
+        palette = newPalette
+        coverImage = data.flatMap { NSImage(data: $0) }
+        blurredCover = data.flatMap { Artwork.blurred($0) }
+        publish(snapshot.playback, style: snapshot.style)
+        // The snapshot published while waiting skipped its reload; compare with what the widget
+        // actually has, so a track change without a cover still reaches it.
+        scheduleReload()
     }
 
     /// Coalesces the reloads of one change (track, play state, cover) into a single one.
@@ -167,6 +178,8 @@ final class WidgetPublisher: ObservableObject {
             let work = DispatchWorkItem { [weak self] in
                 self?.pendingReload = nil
                 guard let self else { return }
+                // Another widget button extended the hold: wait for its end.
+                if Date() < self.suppressedUntil { self.scheduleReload(); return }
                 if let served = self.lastServed, !self.needsReload(from: served, to: self.snapshot) { return }
                 Log.player.notice("reload widgets (after a widget command)")
                 WidgetCenter.shared.reloadAllTimelines()
@@ -178,7 +191,10 @@ final class WidgetPublisher: ObservableObject {
         }
         let work = DispatchWorkItem { [weak self] in
             self?.pendingReload = nil
-            guard let self, Date() >= self.suppressedUntil else { return }
+            guard let self else { return }
+            if Date() < self.suppressedUntil { self.scheduleReload(); return }
+            // The widget may have fetched the change on its own meanwhile.
+            if let served = self.lastServed, !self.needsReload(from: served, to: self.snapshot) { return }
             Log.player.notice("reload widgets")
             WidgetCenter.shared.reloadAllTimelines()
             self.watchReload()
@@ -208,10 +224,10 @@ final class WidgetPublisher: ObservableObject {
         }
     }
 
+    /// Holds back reloads for `seconds`. A reload already scheduled is kept: when it runs, it
+    /// waits for the end of the hold and reloads only if the widget has not seen the change.
     private func suppressReloads(for seconds: TimeInterval) {
         suppressedUntil = Date().addingTimeInterval(seconds)
-        pendingReload?.cancel()
-        pendingReload = nil
     }
 
     /// Reloads right away, for an explicit request such as the "Update widgets" button.
@@ -225,6 +241,8 @@ final class WidgetPublisher: ObservableObject {
         }
         snapshot.cover = data
         snapshot.palette = palette
+        displayPalette = palette
+        encoded = nil
     }
 
     func reloadWidgets() {

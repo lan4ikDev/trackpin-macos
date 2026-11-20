@@ -189,10 +189,10 @@ private struct AppearanceSettings: View {
         HStack(spacing: 0) {
             Form {
                 Section("Тема") {
-                    ThemeGrid(selection: $preferences.style.theme, palette: publisher.snapshot.palette,
+                    ThemeGrid(selection: $preferences.style.theme, palette: publisher.displayPalette,
                               custom: preferences.style.customTheme)
                     if preferences.style.theme == .custom {
-                        CustomThemeEditor(theme: $preferences.style.customTheme, palette: publisher.snapshot.palette)
+                        CustomThemeEditor(theme: $preferences.style.customTheme, palette: publisher.displayPalette)
                     }
                     ThemeFileButtons(preferences: preferences)
                 }

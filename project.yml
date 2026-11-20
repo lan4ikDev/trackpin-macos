@@ -10,8 +10,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "3.4"
-    CURRENT_PROJECT_VERSION: "9"
+    MARKETING_VERSION: "3.4.1"
+    CURRENT_PROJECT_VERSION: "10"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     # Set TRACKPIN_TEAM to your Apple developer team id (a free Apple ID team works),
     # or pick the team in Xcode under Signing & Capabilities. macOS lists widgets

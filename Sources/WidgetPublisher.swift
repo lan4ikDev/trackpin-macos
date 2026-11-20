@@ -32,6 +32,8 @@ final class WidgetPublisher: ObservableObject {
     /// When the widget extension last asked for a snapshot.
     private var lastConnection = Date.distantPast
     private var lastRevival = Date.distantPast
+    /// The snapshot the widget received last.
+    private var lastServed: WidgetSnapshot?
     private var suppressedUntil = Date.distantPast
 
     init() {
@@ -96,6 +98,7 @@ final class WidgetPublisher: ObservableObject {
 
     private func reply(on connection: NWConnection) {
         if encoded == nil { encoded = try? JSONEncoder().encode(snapshot) }
+        lastServed = snapshot
         guard let response = encoded else { connection.cancel(); return }
         connection.send(content: response, contentContext: .finalMessage, isComplete: true,
                         completion: .contentProcessed { error in
@@ -127,6 +130,8 @@ final class WidgetPublisher: ObservableObject {
                     guard let self, self.waitingForCover, self.coverURL == url else { return }
                     self.waitingForCover = false
                     self.cover = nil
+                    self.coverImage = nil
+                    self.blurredCover = nil
                     self.publish(self.snapshot.playback, style: self.snapshot.style)
                 }
                 artworkTask = Task { @MainActor [weak self] in
@@ -142,8 +147,10 @@ final class WidgetPublisher: ObservableObject {
             }
         }
 
-        let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: cover, palette: palette, style: style,
-                                  source: source)
+        // While the new cover loads, `cover` still holds the previous track's one (the mini player
+        // cross-fades from it). The widget must never get it next to the new track.
+        let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: waitingForCover ? nil : cover,
+                                  palette: palette, style: style, source: source)
         encoded = nil
         let reload = needsReload(from: snapshot, to: next)
         snapshot = next
@@ -153,7 +160,22 @@ final class WidgetPublisher: ObservableObject {
     /// Coalesces the reloads of one change (track, play state, cover) into a single one.
     /// macOS gives an app a limited number of widget reloads per day.
     private func scheduleReload() {
-        guard Date() >= suppressedUntil, pendingReload == nil else { return }
+        guard pendingReload == nil else { return }
+        if Date() < suppressedUntil {
+            // Right after a widget button WidgetKit reloads by itself. Something that changes
+            // after that reload (typically the new cover arriving after "next") still needs one.
+            let work = DispatchWorkItem { [weak self] in
+                self?.pendingReload = nil
+                guard let self else { return }
+                if let served = self.lastServed, !self.needsReload(from: served, to: self.snapshot) { return }
+                Log.player.notice("reload widgets (after a widget command)")
+                WidgetCenter.shared.reloadAllTimelines()
+                self.watchReload()
+            }
+            pendingReload = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + suppressedUntil.timeIntervalSinceNow + 0.3, execute: work)
+            return
+        }
         let work = DispatchWorkItem { [weak self] in
             self?.pendingReload = nil
             guard let self, Date() >= self.suppressedUntil else { return }

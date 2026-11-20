@@ -22,16 +22,17 @@ final class WidgetPublisher: ObservableObject {
     /// The encoded snapshot, built lazily when the widget asks: the app reads the player far more
     /// often than the widget reloads, and the snapshot carries the cover.
     private var encoded: Data?
+    /// The artwork URL of the current track.
     private var coverURL: URL?
-    private var cover: Data?
-    private var palette: ArtworkPalette?
-    private var artworkTask: Task<Void, Never>?
-    /// A new cover is loading; the widget reload waits for it (at most two seconds).
-    private var waitingForCover = false
-    /// Tags each cover load, so a timer or task from an earlier switch cannot touch a later one.
-    private var coverGeneration = 0
-    /// The palette for the app's own windows: unlike the widget's, it keeps the previous
-    /// cover's colors while the new cover loads, to avoid a flash of the fallback theme.
+    /// Loaded covers by artwork URL, newest last, so going back to a recent track shows its
+    /// cover at once. Only touched on the main thread.
+    private var covers: [URL: Artwork.Loaded] = [:]
+    private var coverOrder: [URL] = []
+    private var loading: [URL: Task<Void, Never>] = [:]
+    /// Covers that failed to load; not retried until the track changes again.
+    private var failedCovers: Set<URL> = []
+    /// The palette for the app's own windows. It keeps the previous cover's colors while the
+    /// new cover loads, to avoid a flash of the fallback theme.
     @Published private(set) var displayPalette: ArtworkPalette?
     private var pendingReload: DispatchWorkItem?
     /// When the widget extension last asked for a snapshot.
@@ -61,7 +62,7 @@ final class WidgetPublisher: ObservableObject {
         listener?.start(queue: .main)
     }
 
-    deinit { listener?.cancel(); artworkTask?.cancel() }
+    deinit { listener?.cancel(); loading.values.forEach { $0.cancel() } }
 
     // MARK: Server
 
@@ -108,100 +109,104 @@ final class WidgetPublisher: ObservableObject {
         connection.send(content: response, contentContext: .finalMessage, isComplete: true,
                         completion: .contentProcessed { [weak self] error in
             if error != nil { connection.cancel() } else { self?.lastServed = sent }
+            Log.player.notice("sent \(sent.playback.currentTrack?.title ?? "-"), cover: \(sent.cover != nil), error: \(error != nil)")
         })
     }
 
     // MARK: Publishing
+    //
+    // The snapshot is rebuilt from scratch on every change: the playback, and the cover cached
+    // for exactly that track's artwork URL (or none). So the widget can never get a cover or
+    // colors of another track. Whether to reload the widget is decided in one place,
+    // `syncWidget`, by comparing with what the widget actually received last.
 
     func publish(_ playback: Playback, style: WidgetStyle, source: MusicSource? = nil) {
         let source = source ?? snapshot.source
         let url = playback.currentTrack?.artwork
-        if coverURL != url {
-            artworkTask?.cancel()
+        if url != coverURL {
             coverURL = url
-            coverGeneration += 1
-            let generation = coverGeneration
-            // `coverImage`, `blurredCover` and `displayPalette` keep the previous cover until the
-            // new one has loaded, so the mini player can cross-fade. The widget never gets them.
-            if url == nil {
-                cover = nil
-                palette = nil
-                coverImage = nil
-                blurredCover = nil
-                waitingForCover = false
-            }
-            if let url {
-                waitingForCover = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                    // The cover is slow or failed: show the new track without it.
-                    guard let self, self.waitingForCover, self.coverGeneration == generation else { return }
-                    self.finishCover(data: nil, palette: nil)
-                }
-                artworkTask = Task { @MainActor [weak self] in
-                    let artwork = await Artwork.load(url)
-                    guard !Task.isCancelled, let self, self.coverGeneration == generation else { return }
-                    self.finishCover(data: artwork?.data, palette: artwork?.palette)
-                }
-            }
+            if let url { failedCovers.remove(url) }
+            startLoadingCover()
+        }
+        let loaded = url.flatMap { covers[$0] }
+        // The mini player keeps showing the previous cover until the new one is there.
+        if url == nil || url.map(failedCovers.contains) == true {
+            shownCoverURL = nil
+            coverImage = nil
+            blurredCover = nil
+            displayPalette = nil
+        } else if let loaded, coverImage == nil || shownCoverURL != url {
+            shownCoverURL = url
+            coverImage = NSImage(data: loaded.data)
+            blurredCover = Artwork.blurred(loaded.widgetData)
+            displayPalette = loaded.palette
         }
 
-        // While the new cover loads, `cover` and `palette` still belong to the previous track.
-        let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: waitingForCover ? nil : cover,
-                                  palette: waitingForCover ? nil : palette, style: style, source: source)
+        let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: loaded?.widgetData,
+                                  palette: loaded?.palette, style: style, source: source)
+        let changed = needsReload(from: snapshot, to: next)
         encoded = nil
-        let reload = needsReload(from: snapshot, to: next)
         snapshot = next
-        if !waitingForCover { displayPalette = palette }
-        if reload && !waitingForCover { scheduleReload() }
-    }
-
-    /// The new cover arrived, failed or timed out (`data == nil`).
-    private func finishCover(data: Data?, palette newPalette: ArtworkPalette?) {
-        waitingForCover = false
-        cover = data
-        palette = newPalette
-        coverImage = data.flatMap { NSImage(data: $0) }
-        blurredCover = data.flatMap { Artwork.blurred($0) }
-        publish(snapshot.playback, style: snapshot.style)
-        // The snapshot published while waiting skipped its reload; compare with what the widget
-        // actually has, so a track change without a cover still reaches it.
-        scheduleReload()
-    }
-
-    /// Coalesces the reloads of one change (track, play state, cover) into a single one.
-    /// macOS gives an app a limited number of widget reloads per day.
-    private func scheduleReload() {
-        guard pendingReload == nil else { return }
-        if Date() < suppressedUntil {
-            // Right after a widget button WidgetKit reloads by itself. Something that changes
-            // after that reload (typically the new cover arriving after "next") still needs one.
-            let work = DispatchWorkItem { [weak self] in
-                self?.pendingReload = nil
-                guard let self else { return }
-                // Another widget button extended the hold: wait for its end.
-                if Date() < self.suppressedUntil { self.scheduleReload(); return }
-                if let served = self.lastServed, !self.needsReload(from: served, to: self.snapshot) { return }
-                Log.player.notice("reload widgets (after a widget command)")
-                WidgetCenter.shared.reloadAllTimelines()
-                self.watchReload()
-            }
-            pendingReload = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + suppressedUntil.timeIntervalSinceNow + 0.3, execute: work)
-            return
+        if changed {
+            // Give a cover that is still downloading a moment, so the widget gets the new track
+            // and its cover in one reload; `finishedLoading` syncs again when it arrives.
+            let waitForCover = loaded == nil && url.map { loading[$0] != nil } == true
+            syncWidget(after: waitForCover ? 1.2 : 0.5)
         }
+    }
+
+    /// The URL whose cover the mini player shows.
+    private var shownCoverURL: URL?
+
+    private func startLoadingCover() {
+        guard let url = coverURL, covers[url] == nil, loading[url] == nil, !failedCovers.contains(url) else { return }
+        loading[url] = Task { @MainActor [weak self] in
+            let loaded = await Artwork.load(url)
+            self?.finishedLoading(url, loaded)
+        }
+    }
+
+    private func finishedLoading(_ url: URL, _ loaded: Artwork.Loaded?) {
+        loading[url] = nil
+        Log.player.notice("cover \(loaded == nil ? "failed" : "loaded")\(url == coverURL ? "" : " (for an earlier track)")")
+        if let loaded {
+            covers[url] = loaded
+            coverOrder.removeAll { $0 == url }
+            coverOrder.append(url)
+            while coverOrder.count > 16 { covers[coverOrder.removeFirst()] = nil }
+        } else {
+            failedCovers.insert(url)
+        }
+        // Rebuild the snapshot; it picks the cover up only if it belongs to the current track.
+        if url == coverURL { publish(snapshot.playback, style: snapshot.style) }
+    }
+
+    /// Reloads the widget if what it last received differs visibly from the current snapshot.
+    /// One pending check at a time; a later call can only bring it forward.
+    private func syncWidget(after delay: TimeInterval) {
+        let due = Date().addingTimeInterval(delay)
+        if let pendingDue = pendingReloadDue, pendingDue <= due, pendingReload != nil { return }
+        pendingReload?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            self?.pendingReload = nil
             guard let self else { return }
-            if Date() < self.suppressedUntil { self.scheduleReload(); return }
-            // The widget may have fetched the change on its own meanwhile.
+            self.pendingReload = nil
+            self.pendingReloadDue = nil
+            if Date() < self.suppressedUntil {
+                // Right after a widget button WidgetKit reloads by itself; check again after that.
+                self.syncWidget(after: self.suppressedUntil.timeIntervalSinceNow + 0.3)
+                return
+            }
             if let served = self.lastServed, !self.needsReload(from: served, to: self.snapshot) { return }
             Log.player.notice("reload widgets")
             WidgetCenter.shared.reloadAllTimelines()
             self.watchReload()
         }
         pendingReload = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: work)
+        pendingReloadDue = due
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, delay), execute: work)
     }
+
+    private var pendingReloadDue: Date?
 
     /// Sometimes the widget extension stops answering reload requests (its process hangs),
     /// and the widget freezes until it is restarted. If a reload brings no request for a
@@ -233,9 +238,9 @@ final class WidgetPublisher: ObservableObject {
     /// Reloads right away, for an explicit request such as the "Update widgets" button.
     /// Shows `data` as the current cover, for screenshots of the demo track.
     func usePreviewCover(_ data: Data) {
-        cover = data
         coverImage = NSImage(data: data)
         blurredCover = Artwork.blurred(data)
+        var palette: ArtworkPalette?
         if let image = coverImage?.cgImage(forProposedRect: nil, context: nil, hints: nil) {
             palette = Artwork.palette(of: image)
         }
@@ -250,6 +255,7 @@ final class WidgetPublisher: ObservableObject {
         defer { watchReload() }
         pendingReload?.cancel()
         pendingReload = nil
+        pendingReloadDue = nil
         WidgetCenter.shared.reloadAllTimelines()
     }
 

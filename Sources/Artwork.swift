@@ -5,31 +5,53 @@ import UniformTypeIdentifiers
 
 /// Downloads the album cover, shrinks it for the widget and samples its colors.
 enum Artwork {
-    /// Big enough for the large widget on a Retina display.
+    /// For the mini player, which shows the cover up to about 330 pt wide.
     static let maxPixelSize = 600
+    /// For the widget. WidgetKit refuses to draw a widget whose images together exceed an area
+    /// tied to the widget's own size, and then silently keeps showing the previous render (a
+    /// stale track, or a note instead of the cover). 300 px stays well below that limit even
+    /// with the cover drawn twice (cover and blurred background) on the small widget.
+    static let widgetPixelSize = 300
+
+    struct Loaded {
+        /// JPEG, at most `maxPixelSize`.
+        let data: Data
+        /// JPEG, at most `widgetPixelSize`.
+        let widgetData: Data
+        let palette: ArtworkPalette?
+    }
 
     /// Loads a cover from the web, or from a local file (Apple Music covers are cached as files).
-    static func load(_ url: URL) async -> (data: Data, palette: ArtworkPalette?)? {
-        let data: Data
+    static func load(_ url: URL) async -> Loaded? {
+        let original: Data
         if url.isFileURL {
             guard let local = try? Data(contentsOf: url) else { return nil }
-            data = local
+            original = local
         } else {
             guard let (remote, response) = try? await URLSession.shared.data(from: url),
                   (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            data = remote
+            original = remote
         }
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
-              ] as CFDictionary) else { return nil }
+        guard let source = CGImageSourceCreateWithData(original as CFData, nil),
+              let large = thumbnail(source, maxPixelSize), let small = thumbnail(source, widgetPixelSize),
+              let data = jpeg(large), let widgetData = jpeg(small) else { return nil }
+        return Loaded(data: data, widgetData: widgetData, palette: palette(of: small))
+    }
+
+    private static func thumbnail(_ source: CGImageSource, _ size: Int) -> CGImage? {
+        CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: size
+        ] as CFDictionary)
+    }
+
+    private static func jpeg(_ image: CGImage) -> Data? {
         let output = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(output, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(destination, thumbnail, [kCGImageDestinationLossyCompressionQuality: 0.82] as CFDictionary)
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.82] as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { return nil }
-        return (output as Data, palette(of: thumbnail))
+        return output as Data
     }
 
     /// A 160 px, strongly blurred and saturated copy of the cover, rendered once per track.

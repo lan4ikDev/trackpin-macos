@@ -16,6 +16,9 @@ final class AppleMusicBridge: PlayerBackend {
     private var snapshotScript: NSAppleScript?
     private var coverTrackID: String?
     private var coverFile: URL?
+    /// Covers left over from an earlier run are removed once, before the first new one is
+    /// written; within a run each cover is deleted when the track changes.
+    private var removedOldCovers = false
 
     var isAvailable: Bool { Self.runningApp(bundleIdentifiers) != nil }
 
@@ -117,6 +120,10 @@ final class AppleMusicBridge: PlayerBackend {
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "TrackPin", isDirectory: true)
             .appendingPathComponent("MusicArtwork", isDirectory: true)
+        if !removedOldCovers {
+            removedOldCovers = true
+            try? FileManager.default.removeItem(at: folder)
+        }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         // The name changes with the track, so the publisher sees a new URL and loads it.
         let safe = trackID.filter { $0.isLetter || $0.isNumber }

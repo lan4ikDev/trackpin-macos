@@ -383,7 +383,11 @@ private struct ThemeFileButtons: View {
         let panel = NSSavePanel()
         panel.title = String(localized: "Экспорт темы")
         panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "\(theme.name.replacingOccurrences(of: "/", with: "-")).json"
+        // A name without characters that macOS file names cannot hold; never an empty one, which
+        // would make a hidden ".json" file.
+        let base = theme.name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        panel.nameFieldStringValue = "\(base.isEmpty ? "TrackPin" : base).json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try theme.exportData().write(to: url, options: .atomic)

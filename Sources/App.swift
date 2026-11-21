@@ -327,8 +327,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         // Stats need every read, paused ones too, to know where listening stopped.
         player.$playback
             .sink { [weak self] playback in
-                guard let self, self.preferences.keepHistory else { return }
-                self.stats.observe(playback)
+                guard let self else { return }
+                if self.preferences.keepHistory { self.stats.observe(playback) } else { self.stats.pause() }
             }
             .store(in: &observations)
         // `record` ignores repeated reads of the same play, so every playing read can go in.

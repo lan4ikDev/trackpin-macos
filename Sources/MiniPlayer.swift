@@ -156,7 +156,11 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
 
         // A mouse wheel: no gesture phases, every click stands alone.
         if event.phase.isEmpty && event.momentumPhase.isEmpty {
-            guard dy != 0, abs(dy) >= abs(dx), !isOverList(event) else { return false }
+            if isOverList(event) {
+                model.listScrolledAt = Date()
+                return false
+            }
+            guard dy != 0, abs(dy) >= abs(dx) else { return false }
             changeVolume(by: Double(dy) * (event.hasPreciseScrollingDeltas ? 0.2 : 3))
             return true
         }
@@ -168,6 +172,7 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
             swipeDone = false
             scrollVolume = nil
         }
+        if gestureOverList { model.listScrolledAt = Date() }
         // The inertia after the fingers lift: a list keeps scrolling, nothing else reacts to it.
         if !event.momentumPhase.isEmpty { return !gestureOverList }
         if gestureAxis == nil, dx != 0 || dy != 0 {
@@ -309,6 +314,9 @@ final class MiniPlayerModel: ObservableObject {
     /// Frames of the lyrics and the history list, where scrolling belongs to the list. Not
     /// published: only the scroll gestures read it.
     var scrollAreas: [CGRect] = []
+    /// When the user last scrolled one of those lists. The synced lyrics stop following the
+    /// current line for a few seconds after that, instead of jumping back while being read.
+    var listScrolledAt = Date.distantPast
 }
 
 /// Collects the frames of the scrolling lists in the mini player.
@@ -496,7 +504,7 @@ private struct TrackCard: View {
             ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime)
             controls
             if preferences.popupShowsLyrics {
-                LyricsPanel(player: player, lyrics: lyrics, track: track, accent: accent, compact: width < 280)
+                LyricsPanel(player: player, lyrics: lyrics, model: model, track: track, accent: accent, compact: width < 280)
             }
             if preferences.popupShowsVolume, let volume = track.volume {
                 VolumeBar(player: player, volume: volume, accent: accent)
@@ -963,6 +971,8 @@ private struct ScrubBar: View {
 private struct LyricsPanel: View {
     @ObservedObject var player: Player
     @ObservedObject var lyrics: LyricsStore
+    /// Not observed: only read when the current line changes.
+    let model: MiniPlayerModel
     let track: Track
     let accent: Color
     let compact: Bool
@@ -1007,7 +1017,8 @@ private struct LyricsPanel: View {
         case let .loaded(.synced(lines)):
             TimelineView(.periodic(from: .now, by: track.playing ? 0.25 : 3600)) { context in
                 SyncedLyrics(lines: lines, current: Lyrics.currentLine(in: lines, at: position(at: context.date)),
-                             compact: compact, seek: { player.send(.seek($0, track.id)) })
+                             compact: compact, seek: { player.send(.seek($0, track.id)) },
+                             follows: { [model] in Date().timeIntervalSince(model.listScrolledAt) > 4 })
             }
             .id(LyricsStore.key(for: track))
         }
@@ -1031,6 +1042,8 @@ private struct SyncedLyrics: View {
     let current: Int?
     let compact: Bool
     let seek: (Double) -> Void
+    /// False for a few seconds after the user scrolled the lyrics by hand.
+    let follows: () -> Bool
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1056,6 +1069,7 @@ private struct SyncedLyrics: View {
             .scrollArea()
             .onAppear { proxy.scrollTo(current ?? 0, anchor: .center) }
             .onChange(of: current) { _, line in
+                guard follows() else { return }
                 withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line ?? 0, anchor: .center) }
             }
         }

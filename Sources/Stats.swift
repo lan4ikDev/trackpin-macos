@@ -45,6 +45,12 @@ final class ListeningStats: ObservableObject {
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
+    /// Forgets the last read, for while counting is turned off: turned on again later, the
+    /// time in between must not count as listening.
+    func pause() {
+        last = nil
+    }
+
     /// Called with every playback state TrackPin reads.
     func observe(_ playback: Playback, at now: Date = Date()) {
         let current = playback.currentTrack

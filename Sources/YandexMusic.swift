@@ -370,38 +370,62 @@ final class YandexWebBridge: PlayerBackend {
     }
 
     func read(command: PlayerCommand?) -> Playback {
-        var denied = false
-        var idle = false
-        // The command goes to the first browser with a Yandex Music tab only; the other browsers
-        // are just read. Otherwise a play/pause would also hit a tab in a second browser.
-        var pendingCommand = command
-        for browser in runningBrowsers {
-            var result: NSAppleEventDescriptor?
-            var error: NSDictionary?
-            if let command = pendingCommand {
-                let outcome = AppleScript.run(Self.script(for: browser, command: Self.javascript(command)))
-                result = outcome.0
-                error = outcome.1
-                if error == nil, let text = result?.stringValue, text != "none" { pendingCommand = nil }
-            } else {
-                if readScripts[browser.bundleIdentifier] == nil {
-                    readScripts[browser.bundleIdentifier] = NSAppleScript(source: Self.script(for: browser, command: nil))
-                }
-                result = readScripts[browser.bundleIdentifier]?.executeAndReturnError(&error)
-            }
-            if let error {
-                if AppleScript.failure(error, reading: true) == .denied { denied = true }
-                continue
-            }
-            guard let text = result?.stringValue, text != "none" else { continue }
-            switch Self.decode(text) {
-            case let .track(track): return .track(track)
-            case .idle: idle = true
-            default: continue
+        var browsers = runningBrowsers
+        // With several browsers, a command goes to the one whose Yandex Music tab plays (or at
+        // least has a track), and only there: otherwise a play/pause could start an idle tab in
+        // one browser, or hit the tabs of two browsers at once.
+        if command != nil, browsers.count > 1 {
+            let ranked = browsers.map { ($0, Self.rank(state(of: runRead($0)).playback)) }
+            if let best = ranked.max(by: { $0.1 < $1.1 }), best.1 > 0 {
+                browsers = [best.0] + browsers.filter { $0.bundleIdentifier != best.0.bundleIdentifier }
             }
         }
-        if idle { return .idle }
-        return denied ? .denied : .closed
+        var best: Playback = .closed
+        var denied = false
+        var pendingCommand = command
+        for browser in browsers {
+            let outcome: (NSAppleEventDescriptor?, NSDictionary?)
+            if let command = pendingCommand {
+                outcome = AppleScript.run(Self.script(for: browser, command: Self.javascript(command)))
+                if outcome.1 == nil, let text = outcome.0?.stringValue, text != "none" { pendingCommand = nil }
+            } else {
+                outcome = runRead(browser)
+            }
+            let (playback, refused) = state(of: outcome)
+            if refused { denied = true }
+            // A tab that plays wins at once; otherwise the best state across the browsers.
+            if case let .track(track) = playback, track.playing { return playback }
+            if Self.rank(playback) > Self.rank(best) { best = playback }
+        }
+        return best == .closed && denied ? .denied : best
+    }
+
+    /// Runs the read-only script in `browser`, compiled once.
+    private func runRead(_ browser: Browser) -> (NSAppleEventDescriptor?, NSDictionary?) {
+        if readScripts[browser.bundleIdentifier] == nil {
+            readScripts[browser.bundleIdentifier] = NSAppleScript(source: Self.script(for: browser, command: nil))
+        }
+        var error: NSDictionary?
+        let result = readScripts[browser.bundleIdentifier]?.executeAndReturnError(&error)
+        return (result, error)
+    }
+
+    /// The state a script answered with: `.closed` when the browser has no Yandex Music tab or
+    /// failed, with `refused` set when it refused the script.
+    private func state(of outcome: (NSAppleEventDescriptor?, NSDictionary?)) -> (playback: Playback, refused: Bool) {
+        if let error = outcome.1 { return (.closed, AppleScript.failure(error, reading: true) == .denied) }
+        guard let text = outcome.0?.stringValue, text != "none" else { return (.closed, false) }
+        let decoded = Self.decode(text)
+        return (decoded == .unavailable ? .closed : decoded, false)
+    }
+
+    /// Playing beats paused beats an idle tab beats nothing.
+    private static func rank(_ playback: Playback) -> Int {
+        switch playback {
+        case let .track(track): track.playing ? 3 : 2
+        case .idle: 1
+        default: 0
+        }
     }
 
     // MARK: Scripts

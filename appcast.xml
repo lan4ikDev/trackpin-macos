@@ -4,6 +4,19 @@
     <title>TrackPin</title>
     <link>https://raw.githubusercontent.com/lan4ikDev/trackpin-macos/main/appcast.xml</link>
     <item>
+      <title>TrackPin 3.4.3</title>
+      <pubDate>Sat, 21 Nov 2026 21:01:42 GMT</pubDate>
+      <sparkle:version>13</sparkle:version>
+      <sparkle:shortVersionString>3.4.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/3.4.3</link>
+      <description><![CDATA[
+<p>Исправления по итогам полной проверки приложения.</p>
+<ul><li>Текст песни снова листается свайпами, а громкость меняется плавно и больше не отскакивает назад.</li><li>Синхронизированный текст после прокрутки 4 секунды не перескакивает обратно к текущей строке.</li><li>Виджет бережнее тратит обновления: радио без длительности не перерисовывает его при каждом опросе, а смена громкости ждёт, пока она перестанет меняться.</li><li>Позиция в виджете не отскакивает назад, когда обложка приходит с опозданием.</li><li>Кнопки виджета отвечают сразу, даже если плеер в этот момент переключается.</li><li>Яндекс Музыка: команды уходят в тот браузер, где играет трек, а перемотка в приложении больше не сдвигает следующий трек.</li><li>Таймер сна: отмена во время затухания возвращает громкость, а режим «до конца трека» на радио ждёт смены песни.</li><li>Мини-плеер не уходит за край экрана, когда раскрывается история или текст, а кнопки на обложке доступны в VoiceOver.</li><li>Статистика прослушиваний точнее считает радио и не добавляет время, пока история выключена.</li><li>Подсказки кнопок, история и статус связи с виджетом переведены на английский.</li></ul>
+      ]]></description>
+      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/3.4.3/TrackPin-3.4.3.dmg" type="application/octet-stream" sparkle:edSignature="ZF9/qfSHRhice3ZaOBUnXcjd33wmsFaPlzhSpTsqSe6XSuB8YvKaSegn4Sv7X7p6DhvizrvifGvjj6UFvPJ6Bg==" length="4064004" />
+    </item>
+    <item>
       <title>TrackPin 3.4.2</title>
       <pubDate>Fri, 20 Nov 2026 21:05:39 GMT</pubDate>
       <sparkle:version>12</sparkle:version>

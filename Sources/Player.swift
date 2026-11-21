@@ -265,6 +265,11 @@ final class Player: NSObject, ObservableObject {
             sampledAt = Date()
             playback = .track(track)
         }
+        // The same for the volume, so the volume bar follows a scroll or a drag without lagging.
+        if case let .volume(level) = command, case var .track(track) = playback, track.volume != nil {
+            track.volume = min(100, max(0, level))
+            playback = .track(track)
+        }
         if command.coalesces, let last = pending.last, last.command.sameKind(as: command), last.completion == nil {
             pending.removeLast()
         }

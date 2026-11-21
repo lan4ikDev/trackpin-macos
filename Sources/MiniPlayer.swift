@@ -104,20 +104,30 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     }
 
     // MARK: Gestures
+    //
+    // Two fingers sideways switch the track, up and down change the volume. Each trackpad
+    // gesture keeps the direction it started with, so a slightly diagonal scroll does not jump
+    // between the two. Over the lyrics and the history list the scroll belongs to the list
+    // (only a sideways swipe still switches the track there).
+
+    private enum Axis { case horizontal, vertical }
 
     private var scrollMonitor: Any?
+    /// The direction of the current trackpad gesture, decided by its first movement.
+    private var gestureAxis: Axis?
+    /// Whether the current trackpad gesture started over the lyrics or the history.
+    private var gestureOverList = false
     /// Horizontal distance of the current trackpad gesture, and whether it already switched.
     private var swipeDistance: CGFloat = 0
     private var swipeDone = false
-    /// The volume being set by scrolling; the player's reported value lags behind.
+    /// The volume being set by scrolling, with its fraction; the player's reported value lags behind.
     private var scrollVolume: Double?
     private var scrollVolumeAt = Date.distantPast
 
     private func startGestures() {
         guard scrollMonitor == nil else { return }
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self, self.preferences.popupGestures, event.window === self.panel,
-                  !self.isOverScrollableContent(event) else { return event }
+            guard let self, self.preferences.popupGestures, event.window === self.panel else { return event }
             return self.handleScroll(event) ? nil : event
         }
     }
@@ -125,32 +135,50 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     private func stopGestures() {
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
         scrollMonitor = nil
+        gestureAxis = nil
     }
 
-    /// The lyrics and the history scroll on their own; gestures apply everywhere else.
-    private func isOverScrollableContent(_ event: NSEvent) -> Bool {
-        guard let content = panel?.contentView,
-              var view = content.hitTest(content.convert(event.locationInWindow, from: nil)) else { return false }
-        while let parent = view.superview {
-            if let scroll = view as? NSScrollView, scroll.hasVerticalScroller || scroll.documentView != nil {
-                return (scroll.documentView?.frame.height ?? 0) > scroll.contentSize.height + 1
-            }
-            view = parent
-        }
-        return false
+    /// True over the lyrics or the history list. Their frames come from the SwiftUI views
+    /// (`scrollArea()`), in the hosting view's coordinates with the origin at the top left.
+    private func isOverList(_ event: NSEvent) -> Bool {
+        guard let content = panel?.contentView else { return false }
+        let local = content.convert(event.locationInWindow, from: nil)
+        let point = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
+        return model.scrollAreas.contains { $0.contains(point) }
     }
 
-    /// Returns true when the event was used.
+    /// Returns true when the event was used, false to pass it on to the view under the pointer.
     private func handleScroll(_ event: NSEvent) -> Bool {
         // The direction the fingers (or the wheel) actually moved, whatever "natural scrolling" is.
         let sign: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
         let dx = event.scrollingDeltaX * sign
         let dy = event.scrollingDeltaY * sign
-        if event.phase == .began { swipeDistance = 0; swipeDone = false }
-        if !event.momentumPhase.isEmpty { return true } // Ignore the inertia after a swipe.
 
-        if abs(dx) > abs(dy) {
-            guard event.hasPreciseScrollingDeltas else { return false }
+        // A mouse wheel: no gesture phases, every click stands alone.
+        if event.phase.isEmpty && event.momentumPhase.isEmpty {
+            guard dy != 0, abs(dy) >= abs(dx), !isOverList(event) else { return false }
+            changeVolume(by: Double(dy) * (event.hasPreciseScrollingDeltas ? 0.2 : 3))
+            return true
+        }
+
+        if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
+            gestureAxis = nil
+            gestureOverList = isOverList(event)
+            swipeDistance = 0
+            swipeDone = false
+            scrollVolume = nil
+        }
+        // The inertia after the fingers lift: a list keeps scrolling, nothing else reacts to it.
+        if !event.momentumPhase.isEmpty { return !gestureOverList }
+        if gestureAxis == nil, dx != 0 || dy != 0 {
+            gestureAxis = abs(dx) > abs(dy) ? .horizontal : .vertical
+        }
+        defer {
+            if event.phase.contains(.ended) || event.phase.contains(.cancelled) { swipeDistance = 0; swipeDone = false }
+        }
+
+        switch gestureAxis {
+        case .horizontal:
             swipeDistance += dx
             if !swipeDone, abs(swipeDistance) > 70 {
                 swipeDone = true
@@ -158,19 +186,26 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
                 player.send(swipeDistance < 0 ? .next : .previous)
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
-            if event.phase == .ended || event.phase == .cancelled { swipeDistance = 0; swipeDone = false }
+            // A vertical list ignores sideways movement anyway; let it see the whole gesture.
+            return !gestureOverList
+        case .vertical:
+            if gestureOverList { return false }
+            changeVolume(by: Double(dy) * 0.2)
             return true
+        case nil:
+            return !gestureOverList
         }
+    }
 
-        guard dy != 0, let current = player.playback.currentTrack?.volume else { return dy != 0 }
+    /// Fingers up raise the volume. Sends a command only when the whole percent changes.
+    private func changeVolume(by delta: Double) {
+        guard let current = player.playback.currentTrack?.volume else { return }
         if scrollVolume == nil || Date().timeIntervalSince(scrollVolumeAt) > 1.5 { scrollVolume = Double(current) }
-        // Trackpads report pixels, mouse wheels report lines.
-        let step = event.hasPreciseScrollingDeltas ? Double(dy) * 0.35 : Double(dy) * 4
-        let volume = min(100, max(0, (scrollVolume ?? Double(current)) - step))
+        let volume = min(100, max(0, (scrollVolume ?? Double(current)) - delta))
         scrollVolume = volume
         scrollVolumeAt = Date()
-        player.send(.volume(Int(volume.rounded())))
-        return true
+        let level = Int(volume.rounded())
+        if level != current { player.send(.volume(level)) }
     }
 
     private func makePanel() -> MiniPanel {
@@ -271,6 +306,27 @@ final class MiniPlayerModel: ObservableObject {
     @Published var onScreen = true
     /// The recently played list under the controls.
     @Published var showsHistory = false
+    /// Frames of the lyrics and the history list, where scrolling belongs to the list. Not
+    /// published: only the scroll gestures read it.
+    var scrollAreas: [CGRect] = []
+}
+
+/// Collects the frames of the scrolling lists in the mini player.
+private struct ScrollAreasKey: PreferenceKey {
+    static var defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
+private extension View {
+    /// Marks a scrolling list: the mini player's scroll gestures leave it to the list.
+    func scrollArea() -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: ScrollAreasKey.self,
+                                       value: [proxy.frame(in: .named(MiniPlayerView.coordinateSpace))])
+            }
+        }
+    }
 }
 
 final class MiniPanel: NSPanel {
@@ -327,7 +383,12 @@ struct MiniPlayerView: View {
             .environment(\.colorScheme, .dark)
             .buttonStyle(.plain)
             .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+            .coordinateSpace(name: Self.coordinateSpace)
+            .onPreferenceChange(ScrollAreasKey.self) { [model] areas in model.scrollAreas = areas }
     }
+
+    /// The whole hosting view, for the frames of the scrolling lists.
+    static let coordinateSpace = "TrackPinMiniPlayer"
 
     private var name: String { player.source.title }
 
@@ -730,6 +791,7 @@ private struct HistoryList: View {
                     }
                 }
                 .frame(width: width, height: Self.rowHeight * CGFloat(min(history.entries.count, Self.visibleRows)))
+                .scrollArea()
             }
         }
         .padding(.top, 2)
@@ -940,6 +1002,7 @@ private struct LyricsPanel: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
+            .scrollArea()
             .id(LyricsStore.key(for: track))
         case let .loaded(.synced(lines)):
             TimelineView(.periodic(from: .now, by: track.playing ? 0.25 : 3600)) { context in
@@ -990,6 +1053,7 @@ private struct SyncedLyrics: View {
                 .padding(.vertical, compact ? 40 : 48)
                 .animation(.easeInOut(duration: 0.25), value: current)
             }
+            .scrollArea()
             .onAppear { proxy.scrollTo(current ?? 0, anchor: .center) }
             .onChange(of: current) { _, line in
                 withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line ?? 0, anchor: .center) }

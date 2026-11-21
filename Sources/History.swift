@@ -104,8 +104,12 @@ final class PlayHistory: ObservableObject {
         saveWork = nil
         work.cancel()
         guard let fileURL, let data = try? JSONEncoder().encode(entries) else { return }
-        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: fileURL, options: .atomic)
+        // On the same queue as the scheduled saves, after them: an older save still running
+        // must not overwrite this one.
+        Self.ioQueue.sync {
+            try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: fileURL, options: .atomic)
+        }
     }
 }
 

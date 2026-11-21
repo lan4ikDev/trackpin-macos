@@ -190,15 +190,15 @@ final class WidgetPublisher: ObservableObject {
             displayPalette = loaded.palette
         }
 
+        let waitForCover = loaded == nil && url.map { loading[$0] != nil } == true
         let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: loaded?.widgetData,
-                                  palette: loaded?.palette, style: style, source: source)
+                                  palette: loaded?.palette, style: style, source: source, coverLoading: waitForCover)
         let changed = needsReload(from: snapshot, to: next)
         encoded = nil
         snapshot = next
         if changed {
             // Give a cover that is still downloading a moment, so the widget gets the new track
             // and its cover in one reload; `finishedLoading` syncs again when it arrives.
-            let waitForCover = loaded == nil && url.map { loading[$0] != nil } == true
             syncWidget(after: waitForCover ? 1.2 : 0.5)
         }
     }

@@ -82,6 +82,9 @@ enum Artwork {
         return output as Data
     }
 
+    /// Created once: a Core Image context is expensive to set up.
+    private static let blurContext = CIContext(options: [.useSoftwareRenderer: false])
+
     /// A 160 px, strongly blurred and saturated copy of the cover, rendered once per track.
     static func blurred(_ data: Data) -> NSImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
@@ -94,7 +97,7 @@ enum Artwork {
             .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 14])
             .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.35, kCIInputBrightnessKey: -0.06])
             .cropped(to: input.extent)
-        guard let image = CIContext(options: [.useSoftwareRenderer: false]).createCGImage(output, from: input.extent) else { return nil }
+        guard let image = blurContext.createCGImage(output, from: input.extent) else { return nil }
         return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
 

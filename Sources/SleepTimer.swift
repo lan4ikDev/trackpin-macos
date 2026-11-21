@@ -22,6 +22,8 @@ final class SleepTimer: ObservableObject {
     private var fadeTimer: Timer?
     private var trackID: String?
     private var observation: AnyCancellable?
+    /// The volume before the fade out began, restored if the timer is cancelled mid-fade.
+    private var volumeBeforeFade: Int?
 
     init(player: Player) {
         self.player = player
@@ -44,6 +46,11 @@ final class SleepTimer: ObservableObject {
     }
 
     func cancel() {
+        // Cancelled during the fade out: give the music its volume back.
+        if let volume = volumeBeforeFade {
+            volumeBeforeFade = nil
+            player.send(.volume(volume))
+        }
         timer?.invalidate()
         fadeTimer?.invalidate()
         timer = nil
@@ -63,7 +70,8 @@ final class SleepTimer: ObservableObject {
             fire()
             return
         }
-        guard track.playing else {
+        // Paused, or a stream without a known length (radio): wait for the track to change.
+        guard track.playing, track.duration > 0 else {
             timer?.invalidate()
             timer = nil
             deadline = nil
@@ -102,19 +110,26 @@ final class SleepTimer: ObservableObject {
         }
         let total = deadline.timeIntervalSinceNow
         let began = Date()
-        fadeTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+        volumeBeforeFade = start
+        // In the common modes, so the fade goes on while a menu is open.
+        let fadeTimer = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
             let progress = min(1, Date().timeIntervalSince(began) / total)
             if progress >= 1 {
                 timer.invalidate()
-                self.fire(restoreVolume: start)
+                self.fire()
             } else {
                 self.player.send(.volume(Int(Double(start) * (1 - progress))))
             }
         }
+        RunLoop.main.add(fadeTimer, forMode: .common)
+        self.fadeTimer = fadeTimer
     }
 
-    private func fire(restoreVolume: Int? = nil) {
+    private func fire() {
+        // Pause first, then bring the volume back for the next time the music plays.
+        let restoreVolume = volumeBeforeFade
+        volumeBeforeFade = nil
         player.send(.pause) { [weak self] _ in
             if let restoreVolume { self?.player.send(.volume(restoreVolume)) }
         }

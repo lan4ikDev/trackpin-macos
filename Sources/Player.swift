@@ -94,7 +94,7 @@ final class Player: NSObject, ObservableObject {
             guard selection != oldValue else { return }
             if case let .fixed(fixed) = selection, fixed != source {
                 source = fixed
-                pending.removeAll()
+                dropPending()
             }
             refresh(probe: true)
         }
@@ -204,9 +204,17 @@ final class Player: NSObject, ObservableObject {
            let origin = backends.values.first(where: { $0.changeNotifications.contains(note.name.rawValue) }),
            origin.source != source {
             source = origin.source
-            pending.removeAll()
+            dropPending()
         }
         refresh()
+    }
+
+    /// Forgets the queued commands of the previous player. Their callers (a widget button waits
+    /// for its answer) still get one, the current state, instead of waiting until they time out.
+    private func dropPending() {
+        let dropped = pending
+        pending.removeAll()
+        for command in dropped { command.completion?(playback) }
     }
 
     private func schedule() {

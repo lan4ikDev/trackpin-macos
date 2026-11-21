@@ -71,8 +71,11 @@ final class LyricsStore: ObservableObject {
     private var memory: [String: Lyrics] = [:]
     private var task: Task<Void, Never>?
 
+    /// The track's identity for lyrics. Not the duration: Yandex Music shows the remaining time,
+    /// so the duration TrackPin derives from it can move by a second between reads, which would
+    /// reload the lyrics and reset their scroll each time.
     static func key(for track: Track) -> String {
-        "\(track.artist.lowercased())\n\(track.title.lowercased())\n\(Int(track.duration.rounded()))"
+        "\(track.id)\n\(track.artist.lowercased())\n\(track.title.lowercased())"
     }
 
     /// What to show for `track`: `.loading` until `load` finished for this very track.

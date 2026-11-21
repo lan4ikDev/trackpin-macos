@@ -264,8 +264,9 @@ final class YandexAppBridge: PlayerBackend {
         case let .skip(offset):
             guard let track = scan.playback.currentTrack else { return }
             seek(to: track.position + Double(offset), in: scan, duration: track.duration)
-        case let .seek(seconds, _):
-            guard let track = scan.playback.currentTrack else { return }
+        case let .seek(seconds, id):
+            // Like Spotify and Music: a seek meant for the previous track must not move the next one.
+            guard let track = scan.playback.currentTrack, track.id == id else { return }
             seek(to: seconds, in: scan, duration: track.duration)
         case let .volume(level):
             let sliders = scan.sliders
@@ -371,13 +372,17 @@ final class YandexWebBridge: PlayerBackend {
     func read(command: PlayerCommand?) -> Playback {
         var denied = false
         var idle = false
+        // The command goes to the first browser with a Yandex Music tab only; the other browsers
+        // are just read. Otherwise a play/pause would also hit a tab in a second browser.
+        var pendingCommand = command
         for browser in runningBrowsers {
             var result: NSAppleEventDescriptor?
             var error: NSDictionary?
-            if let command {
+            if let command = pendingCommand {
                 let outcome = AppleScript.run(Self.script(for: browser, command: Self.javascript(command)))
                 result = outcome.0
                 error = outcome.1
+                if error == nil, let text = result?.stringValue, text != "none" { pendingCommand = nil }
             } else {
                 if readScripts[browser.bundleIdentifier] == nil {
                     readScripts[browser.bundleIdentifier] = NSAppleScript(source: Self.script(for: browser, command: nil))

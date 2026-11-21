@@ -1163,9 +1163,9 @@ private struct VolumeBar: View {
                         dragging = next
                         player.send(.volume(Int(next.rounded())))
                     }
-                    .onEnded { _ in
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dragging = nil }
-                    })
+                    // The player shows the new volume right away, so the bar can let go at once.
+                    // A delayed reset could also land in the middle of the next drag.
+                    .onEnded { _ in dragging = nil })
             }
             .frame(height: 14)
             Image(systemName: "speaker.wave.3.fill").font(.system(size: 11))

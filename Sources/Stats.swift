@@ -24,6 +24,7 @@ final class ListeningStats: ObservableObject {
     private var saveWork: DispatchWorkItem?
     private var last: (track: Track, at: Date)?
     private static let keep = 60
+    private static let ioQueue = DispatchQueue(label: "dev.lan4ik.needle.stats", qos: .utility)
 
     init(fileURL: URL? = ListeningStats.defaultURL) {
         self.fileURL = fileURL
@@ -119,7 +120,7 @@ final class ListeningStats: ObservableObject {
         }
         let snapshot = days
         let work = DispatchWorkItem {
-            DispatchQueue.global(qos: .utility).async {
+            Self.ioQueue.async {
                 guard let data = try? JSONEncoder().encode(snapshot) else { return }
                 try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? data.write(to: fileURL, options: .atomic)
@@ -135,7 +136,10 @@ final class ListeningStats: ObservableObject {
         saveWork?.cancel()
         saveWork = nil
         guard let data = try? JSONEncoder().encode(days) else { return }
-        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: fileURL, options: .atomic)
+        // After any scheduled save still running, so an older one cannot overwrite this.
+        Self.ioQueue.sync {
+            try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: fileURL, options: .atomic)
+        }
     }
 }

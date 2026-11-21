@@ -28,14 +28,42 @@ enum Artwork {
             guard let local = try? Data(contentsOf: url) else { return nil }
             original = local
         } else {
-            guard let (remote, response) = try? await URLSession.shared.data(from: url),
-                  (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            guard let remote = await download(url) else { return nil }
             original = remote
         }
         guard let source = CGImageSourceCreateWithData(original as CFData, nil),
               let large = thumbnail(source, maxPixelSize), let small = thumbnail(source, widgetPixelSize),
               let data = jpeg(large), let widgetData = jpeg(small) else { return nil }
         return Loaded(data: data, widgetData: widgetData, palette: palette(of: small))
+    }
+
+    /// Short timeouts: the widget waits for the cover, and a stuck request would otherwise
+    /// hold it for the default 60 seconds.
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 8
+        configuration.timeoutIntervalForResource = 15
+        configuration.waitsForConnectivity = false
+        return URLSession(configuration: configuration)
+    }()
+
+    /// Downloads `url`, trying again twice after a network error or a server error (5xx, 429).
+    /// A missing cover (404 and the like) is not retried.
+    private static func download(_ url: URL) async -> Data? {
+        let pauses: [UInt64] = [700_000_000, 2_000_000_000]
+        for attempt in 0...pauses.count {
+            do {
+                let (data, response) = try await session.data(from: url)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if status == 200 { return data }
+                guard status == 429 || (500...599).contains(status) else { return nil }
+            } catch {
+                if Task.isCancelled { return nil }
+            }
+            guard attempt < pauses.count else { break }
+            try? await Task.sleep(nanoseconds: pauses[attempt])
+        }
+        return nil
     }
 
     private static func thumbnail(_ source: CGImageSource, _ size: Int) -> CGImage? {

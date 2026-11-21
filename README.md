@@ -64,17 +64,25 @@
 ```bash
 ./build.sh --install        # собрать, заменить /Applications/TrackPin.app и перезапустить
 ./scripts/make-dmg.sh       # собрать build/TrackPin-<версия>.dmg
-./scripts/release.sh        # DMG + подпись Sparkle + запись в appcast.xml
+./scripts/release.sh        # DMG, подпись Sparkle, релиз на GitHub и запись в appcast.xml
 ```
 
 `build.sh` подписывает первым сертификатом Apple Development из Связки ключей (подойдёт любой Apple ID:
-Xcode → Settings → Accounts) или командой из `TRACKPIN_TEAM=ABCDE12345`.
+Xcode → Settings → Accounts) или командой из `TRACKPIN_TEAM=ABCDE12345`. Каждый push и PR собирает
+GitHub Actions с `--self-test`.
 
 ### Как выпустить версию
 
 1. Подними `MARKETING_VERSION` и `CURRENT_PROJECT_VERSION` в `project.yml`.
-2. `./scripts/release.sh` соберёт DMG, подпишет его ключом Sparkle из Связки ключей и добавит запись в `appcast.xml`.
-3. Закоммить `appcast.xml` в `main`, создай на GitHub релиз `v<версия>` и прикрепи DMG из `build/`.
+2. Опиши изменения в `docs/releases/<версия>.md` (абзацы и списки «- »). Если файла нет, `release.sh`
+   сам набросает его из коммитов и остановится, чтобы ты его поправил.
+3. Закоммить и запушь всё в `main`, затем запусти `./scripts/release.sh`. Скрипт проверит, что версия
+   и номер сборки выросли, соберёт DMG, подпишет его ключом Sparkle, создаст на GitHub релиз с тегом
+   `<версия>` (нужен `gh`), дождётся, пока DMG станет доступен, и только потом запушит `appcast.xml`
+   с описанием изменений. `--no-publish` только соберёт DMG и обновит `appcast.xml` локально.
+4. Нотаризация: с платным аккаунтом разработчика и сертификатом Developer ID Application один раз
+   выполни `xcrun notarytool store-credentials trackpin …` и выпускай через
+   `TRACKPIN_DEVELOPER_ID=1 ./scripts/release.sh`. Тогда macOS не будет блокировать первый запуск.
 
 ## Как это работает
 

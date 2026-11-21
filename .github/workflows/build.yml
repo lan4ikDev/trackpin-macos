@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick Xcode 16
+        run: |
+          xcode="$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+
+      - name: Cache XcodeGen and Swift packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/TrackPin/xcodegen
+            ~/Library/Caches/TrackPin/DerivedData/SourcePackages
+          key: deps-${{ runner.os }}-${{ hashFiles('project.yml') }}
+
+      # No certificates on the runner: build.sh signs ad hoc, verifies the signature
+      # and runs the app's --self-test.
+      - name: Build and self-test
+        run: ./build.sh
+
+      - name: Check appcast.xml
+        run: |
+          xmllint --noout appcast.xml
+          ! grep -n 'releases/download/v' appcast.xml
+
+      - name: Build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ~/Library/Caches/TrackPin/build.log

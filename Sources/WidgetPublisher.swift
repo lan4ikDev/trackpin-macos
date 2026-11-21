@@ -29,8 +29,13 @@ final class WidgetPublisher: ObservableObject {
     private var covers: [URL: Artwork.Loaded] = [:]
     private var coverOrder: [URL] = []
     private var loading: [URL: Task<Void, Never>] = [:]
-    /// Covers that failed to load; not retried until the track changes again.
+    /// Covers that failed to load. `Artwork.load` already retries quick network hiccups; after
+    /// that a cover of the current track is tried again later (`coverRetryDelays`), so a short
+    /// outage does not leave the whole track without its cover.
     private var failedCovers: Set<URL> = []
+    /// Delayed retries already spent, by artwork URL. Reset when the track changes.
+    private var coverRetries: [URL: Int] = [:]
+    private static let coverRetryDelays: [TimeInterval] = [15, 60]
     /// The palette for the app's own windows. It keeps the previous cover's colors while the
     /// new cover loads, to avoid a flash of the fallback theme.
     @Published private(set) var displayPalette: ArtworkPalette?
@@ -43,26 +48,66 @@ final class WidgetPublisher: ObservableObject {
     private var suppressedUntil = Date.distantPast
 
     init() {
+        startListener()
+    }
+
+    deinit { listener?.cancel(); restartWork?.cancel(); loading.values.forEach { $0.cancel() } }
+
+    // MARK: Listener
+    //
+    // The port is fixed at build time, so another app may hold it for a while, or the network
+    // stack may drop the listener (for example after sleep). Without a listener the widget stays
+    // offline until TrackPin restarts, so a failed listener is started again with growing pauses.
+
+    private var restartWork: DispatchWorkItem?
+    private var restartAttempts = 0
+
+    private func startListener() {
+        restartWork = nil
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = .hostPort(host: WidgetTransport.address, port: WidgetTransport.port)
         params.allowLocalEndpointReuse = true
-        listener = try? NWListener(using: params)
-        listener?.newConnectionHandler = { [weak self] in self?.serve($0) }
-        listener?.stateUpdateHandler = { [weak self] state in
+        let listener: NWListener
+        do {
+            listener = try NWListener(using: params)
+        } catch {
+            NSLog("TrackPin widget listener: %@", error.localizedDescription)
+            Log.player.notice("widget listener could not start: \(error.localizedDescription)")
+            scheduleListenerRestart()
+            return
+        }
+        self.listener = listener
+        listener.newConnectionHandler = { [weak self] in self?.serve($0) }
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            guard let self, let listener, listener === self.listener else { return }
             switch state {
             case .ready:
-                self?.listening = true
+                if self.restartAttempts > 0 { Log.player.notice("widget listener is back after \(self.restartAttempts) restarts") }
+                self.restartAttempts = 0
+                self.listening = true
                 WidgetCenter.shared.reloadAllTimelines()
-            case let .failed(error):
-                self?.listening = false
+            case let .failed(error), let .waiting(error):
+                self.listening = false
                 NSLog("TrackPin widget listener: %@", error.localizedDescription)
+                Log.player.notice("widget listener stopped: \(error.localizedDescription)")
+                listener.cancel()
+                self.listener = nil
+                self.scheduleListenerRestart()
             default: break
             }
         }
-        listener?.start(queue: .main)
+        listener.start(queue: .main)
     }
 
-    deinit { listener?.cancel(); loading.values.forEach { $0.cancel() } }
+    /// Starts the listener again after 2, 4, 8 … seconds, at most a minute apart.
+    private func scheduleListenerRestart() {
+        guard restartWork == nil else { return }
+        let delay = min(60, pow(2, Double(min(restartAttempts, 6)) + 1))
+        restartAttempts += 1
+        let work = DispatchWorkItem { [weak self] in self?.startListener() }
+        restartWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
 
     // MARK: Server
 
@@ -127,6 +172,7 @@ final class WidgetPublisher: ObservableObject {
         let url = playback.currentTrack?.artwork
         if url != coverURL {
             coverURL = url
+            coverRetries.removeAll()
             if let url { failedCovers.remove(url) }
             startLoadingCover()
         }
@@ -178,9 +224,23 @@ final class WidgetPublisher: ObservableObject {
             while coverOrder.count > 16 { covers[coverOrder.removeFirst()] = nil }
         } else {
             failedCovers.insert(url)
+            scheduleCoverRetry(url)
         }
         // Rebuild the snapshot; it picks the cover up only if it belongs to the current track.
         if url == coverURL { publish(snapshot.playback, style: snapshot.style) }
+    }
+
+    /// Tries a failed cover once more after a pause, if its track is still playing then.
+    private func scheduleCoverRetry(_ url: URL) {
+        let attempt = coverRetries[url, default: 0]
+        guard attempt < Self.coverRetryDelays.count else { return }
+        coverRetries[url] = attempt + 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.coverRetryDelays[attempt]) { [weak self] in
+            guard let self, self.coverURL == url, self.failedCovers.contains(url) else { return }
+            Log.player.notice("retrying cover: \(url.absoluteString)")
+            self.failedCovers.remove(url)
+            self.startLoadingCover()
+        }
     }
 
     /// Reloads the widget if what it last received differs visibly from the current snapshot.

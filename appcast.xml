@@ -9,8 +9,8 @@
       <sparkle:version>12</sparkle:version>
       <sparkle:shortVersionString>3.4.2</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/v3.4.2</link>
-      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/v3.4.2/TrackPin-3.4.2.dmg" type="application/octet-stream" sparkle:edSignature="W2DjKCI23xWA9uIfp9ldUHBRVLq3geMy3gUxrvP1QWsnyoXbARihw+KgkGqGxoTlJ1pQPTLZ0HnqPDXGN5jLCw==" length="4072770" />
+      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/3.4.2</link>
+      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/3.4.2/TrackPin-3.4.2.dmg" type="application/octet-stream" sparkle:edSignature="W2DjKCI23xWA9uIfp9ldUHBRVLq3geMy3gUxrvP1QWsnyoXbARihw+KgkGqGxoTlJ1pQPTLZ0HnqPDXGN5jLCw==" length="4072770" />
     </item>
     <item>
       <title>TrackPin 3.4.1</title>
@@ -18,8 +18,8 @@
       <sparkle:version>10</sparkle:version>
       <sparkle:shortVersionString>3.4.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/v3.4.1</link>
-      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/v3.4.1/TrackPin-3.4.1.dmg" type="application/octet-stream" sparkle:edSignature="hwni3i1+ZIkDmC1C9UxrJ9uaJpJ9pwvoxTM+OrV5Y1iFINxc4CUcLzvKIyrY/7z+9ISzm+/NbDlNd9Y1F+XmBQ==" length="4012616" />
+      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/3.4.1</link>
+      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/3.4.1/TrackPin-3.4.1.dmg" type="application/octet-stream" sparkle:edSignature="hwni3i1+ZIkDmC1C9UxrJ9uaJpJ9pwvoxTM+OrV5Y1iFINxc4CUcLzvKIyrY/7z+9ISzm+/NbDlNd9Y1F+XmBQ==" length="4012616" />
     </item>
     <item>
       <title>TrackPin 3.4</title>
@@ -27,8 +27,8 @@
       <sparkle:version>9</sparkle:version>
       <sparkle:shortVersionString>3.4</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/v3.4</link>
-      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/v3.4/TrackPin-3.4.dmg" type="application/octet-stream" sparkle:edSignature="a1jtUTqq0mqXgGPEKZbw64STPDYI0O5IIR6RsLv/g+K579LKfro+fvtrfnZ5zMvtbIYxt0nInY7z86WEIX+rBQ==" length="3988105" />
+      <link>https://github.com/lan4ikDev/trackpin-macos/releases/tag/3.4</link>
+      <enclosure url="https://github.com/lan4ikDev/trackpin-macos/releases/download/3.4/TrackPin-3.4.dmg" type="application/octet-stream" sparkle:edSignature="a1jtUTqq0mqXgGPEKZbw64STPDYI0O5IIR6RsLv/g+K579LKfro+fvtrfnZ5zMvtbIYxt0nInY7z86WEIX+rBQ==" length="3988105" />
     </item>
   </channel>
 </rss>

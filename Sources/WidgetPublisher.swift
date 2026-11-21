@@ -167,7 +167,8 @@ final class WidgetPublisher: ObservableObject {
     // colors of another track. Whether to reload the widget is decided in one place,
     // `syncWidget`, by comparing with what the widget actually received last.
 
-    func publish(_ playback: Playback, style: WidgetStyle, source: MusicSource? = nil) {
+    /// `sampledAt` is when `playback` was read: the widget moves a playing track on from there.
+    func publish(_ playback: Playback, style: WidgetStyle, source: MusicSource? = nil, sampledAt: Date = Date()) {
         let source = source ?? snapshot.source
         let url = playback.currentTrack?.artwork
         if url != coverURL {
@@ -191,15 +192,22 @@ final class WidgetPublisher: ObservableObject {
         }
 
         let waitForCover = loaded == nil && url.map { loading[$0] != nil } == true
-        let next = WidgetSnapshot(playback: playback, sampledAt: Date(), cover: loaded?.widgetData,
+        let next = WidgetSnapshot(playback: playback, sampledAt: sampledAt, cover: loaded?.widgetData,
                                   palette: loaded?.palette, style: style, source: source, coverLoading: waitForCover)
-        let changed = needsReload(from: snapshot, to: next)
+        let change = Self.change(from: snapshot, to: next)
         encoded = nil
         snapshot = next
-        if changed {
+        switch change {
+        case .visible:
             // Give a cover that is still downloading a moment, so the widget gets the new track
             // and its cover in one reload; `finishedLoading` syncs again when it arrives.
             syncWidget(after: waitForCover ? 1.2 : 0.5)
+        case .volume:
+            // A scroll, a drag or the sleep timer's fade changes the volume many times in a row:
+            // reload once it has settled instead of every half second.
+            syncWidget(after: 1.5, settling: true)
+        case .nothing:
+            break
         }
     }
 
@@ -227,7 +235,9 @@ final class WidgetPublisher: ObservableObject {
             scheduleCoverRetry(url)
         }
         // Rebuild the snapshot; it picks the cover up only if it belongs to the current track.
-        if url == coverURL { publish(snapshot.playback, style: snapshot.style) }
+        // The playback is the one read before, so it keeps its time: with a fresh one the widget
+        // would show the position as it was at the last read, seconds (or a retry) ago.
+        if url == coverURL { publish(snapshot.playback, style: snapshot.style, sampledAt: snapshot.sampledAt) }
     }
 
     /// Tries a failed cover once more after a pause, if its track is still playing then.
@@ -244,31 +254,44 @@ final class WidgetPublisher: ObservableObject {
     }
 
     /// Reloads the widget if what it last received differs visibly from the current snapshot.
-    /// One pending check at a time; a later call can only bring it forward.
-    private func syncWidget(after delay: TimeInterval) {
+    /// One pending check at a time; a later call can only bring it forward, except that a check
+    /// which only waits for the volume to settle (`settling`) moves on with every new change.
+    private func syncWidget(after delay: TimeInterval, settling: Bool = false) {
         let due = Date().addingTimeInterval(delay)
-        if let pendingDue = pendingReloadDue, pendingDue <= due, pendingReload != nil { return }
+        if pendingReload != nil, let pendingDue = pendingReloadDue {
+            if settling {
+                // Any other pending check stays as it is and will see the volume too.
+                if !pendingReloadSettles { return }
+            } else {
+                // Something visible changed: it must not wait for the volume to settle.
+                pendingReloadSettles = false
+                if pendingDue <= due { return }
+            }
+        }
         pendingReload?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.pendingReload = nil
             self.pendingReloadDue = nil
+            self.pendingReloadSettles = false
             if Date() < self.suppressedUntil {
                 // Right after a widget button WidgetKit reloads by itself; check again after that.
                 self.syncWidget(after: self.suppressedUntil.timeIntervalSinceNow + 0.3)
                 return
             }
-            if let served = self.lastServed, !self.needsReload(from: served, to: self.snapshot) { return }
+            if let served = self.lastServed, Self.change(from: served, to: self.snapshot) == .nothing { return }
             Log.player.notice("reload widgets")
             WidgetCenter.shared.reloadAllTimelines()
             self.watchReload()
         }
         pendingReload = work
         pendingReloadDue = due
+        pendingReloadSettles = settling
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, delay), execute: work)
     }
 
     private var pendingReloadDue: Date?
+    private var pendingReloadSettles = false
 
     /// Sometimes the widget extension stops answering reload requests (its process hangs),
     /// and the widget freezes until it is restarted. If a reload brings no request for a
@@ -318,20 +341,35 @@ final class WidgetPublisher: ObservableObject {
         pendingReload?.cancel()
         pendingReload = nil
         pendingReloadDue = nil
+        pendingReloadSettles = false
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// What a new snapshot changes for the widget.
+    enum Change: Equatable {
+        case nothing
+        /// Only the volume, which often changes many times in a row.
+        case volume
+        case visible
     }
 
     /// Reload only when something visible changed. A playing track advances on its own
     /// in the widget, so a regular position update does not need a reload.
-    private func needsReload(from old: WidgetSnapshot, to new: WidgetSnapshot) -> Bool {
+    static func change(from old: WidgetSnapshot, to new: WidgetSnapshot) -> Change {
         guard old.hostReachable, old.style == new.style, old.cover == new.cover, old.palette == new.palette,
-              old.source == new.source else { return true }
-        if let before = old.playback.currentTrack, let after = new.playback.currentTrack {
-            let elapsed = before.playing ? new.sampledAt.timeIntervalSince(old.sampledAt) : 0
-            return before.id != after.id || before.playing != after.playing || before.title != after.title
-                || (new.style.showVolume && before.volume != after.volume)
-                || abs(min(before.duration, before.position + elapsed) - after.position) > 3
+              old.source == new.source else { return .visible }
+        guard let before = old.playback.currentTrack, let after = new.playback.currentTrack else {
+            return old.playback == new.playback ? .nothing : .visible
         }
-        return old.playback != new.playback
+        let elapsed = before.playing ? new.sampledAt.timeIntervalSince(old.sampledAt) : 0
+        let expected = before.duration > 0 ? min(before.duration, before.position + elapsed) : before.position + elapsed
+        let otherTrack = before.id != after.id || before.title != after.title || before.artist != after.artist
+        // A length that only became known now (a stream, or a page still loading the track).
+        let lengthChanged = abs(before.duration - after.duration) > 2
+        // Without a length the widget shows no position, so a stream must not reload on every
+        // read just because its position moves on.
+        let jumped = after.duration > 0 && abs(expected - after.position) > 3
+        if otherTrack || before.playing != after.playing || lengthChanged || jumped { return .visible }
+        return new.style.showVolume && before.volume != after.volume ? .volume : .nothing
     }
 }

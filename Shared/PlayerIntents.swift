@@ -49,7 +49,9 @@ struct PlayerControlIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        guard await WidgetTransport.send(.command(action, step: step)) != nil else {
+        // Shortcuts accept any number, but the app takes 1–120 seconds and refuses the rest,
+        // which would read as "TrackPin isn't running".
+        guard await WidgetTransport.send(.command(action, step: min(max(step, 1), 120))) != nil else {
             throw TrackPinError.hostUnavailable
         }
         return .result()

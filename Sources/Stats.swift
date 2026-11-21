@@ -65,8 +65,9 @@ final class ListeningStats: ObservableObject {
             listened = current.position - previous.track.position
             if listened < 0 { listened = 0 } // Seeked back or repeat one: count nothing for this gap.
         } else {
-            // The previous track played on until it ended or was switched.
-            listened = max(0, previous.track.duration - previous.track.position)
+            // The previous track played on until it ended or was switched. A stream without a
+            // length (radio) has no end to count to: it played until now.
+            listened = previous.track.duration > 0 ? max(0, previous.track.duration - previous.track.position) : elapsed
             if let current, current.playing { countPlay(current, at: now) }
         }
         add(min(listened, elapsed + 2), artist: previous.track.artist, at: now)

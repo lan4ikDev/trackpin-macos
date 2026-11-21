@@ -646,13 +646,29 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Turn on"
+            "value": "Play"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Включить"
+          }
+        }
+      }
+    },
+    "Включить «%@»": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Play “%@”"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включить «%@»"
           }
         }
       }
@@ -1665,6 +1681,22 @@
         }
       }
     },
+    "Настройки": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Настройки"
+          }
+        }
+      }
+    },
     "Настройки TrackPin": {
       "localizations": {
         "en": {
@@ -1709,6 +1741,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Не запущен"
+          }
+        }
+      }
+    },
+    "Не запущена": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not running"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не запущена"
           }
         }
       }
@@ -2925,6 +2973,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Проверять обновления автоматически"
+          }
+        }
+      }
+    },
+    "Работает": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает"
           }
         }
       }

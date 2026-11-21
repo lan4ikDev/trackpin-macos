@@ -28,7 +28,7 @@ extension RGB {
 /// A theme made in the TrackPin theme editor. It is stored with the widget style and is
 /// also the format of an exported theme file:
 ///
-///     {"format": "trackpin-theme", "version": 1, "name": String(localized: "Ночь"),
+///     {"format": "trackpin-theme", "version": 1, "name": "Ночь",
 ///      "top": "#1E2A38", "bottom": "#0B1220", "accent": "#8CE6FF"}
 struct CustomTheme: Codable, Equatable {
     var name: String

@@ -326,7 +326,7 @@ private struct ThemeGrid: View {
 
 // MARK: Theme editor
 
-/// Colors of the String(localized: "Своя") theme. Changes reach the widget right away, like any other setting.
+/// Colors of the «Своя» (custom) theme. Changes reach the widget right away, like any other setting.
 private struct CustomThemeEditor: View {
     @Binding var theme: CustomTheme
     let palette: ArtworkPalette?
@@ -539,7 +539,8 @@ private struct HelpSettings: View {
         Form {
             Section("Состояние") {
                 LabeledContent(player.source.settingsTitle, value: spotifyStatus)
-                LabeledContent("Связь с виджетом", value: publisher.listening ? "Работает" : "Не запущена")
+                LabeledContent("Связь с виджетом",
+                               value: publisher.listening ? String(localized: "Работает") : String(localized: "Не запущена"))
                 if player.playback == .denied {
                     Text(player.source.accessHint).font(.caption).foregroundStyle(.secondary)
                     Button("Открыть настройки доступа") { player.source.requestAccess() }

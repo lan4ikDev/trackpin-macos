@@ -246,7 +246,9 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
             var frame = panel.frame
             frame.origin.y += frame.height - size.height
             frame.size = size
-            panel.setFrame(frame, display: true)
+            // The card grows downwards (history, lyrics): near the bottom of the screen it moves
+            // up instead of hanging off the edge.
+            panel.setFrame(self.keepOnScreen(frame, screen: panel.screen), display: true)
         }
     }
 
@@ -260,10 +262,17 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         case .center:
             frame.origin = NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2)
         }
-        // The shadow margin may hang off the screen edge; the card itself may not.
+        return keepOnScreen(frame, screen: screen)
+    }
+
+    /// Moves `frame` onto the visible part of `screen`. The shadow margin may hang off the
+    /// screen edge; the card itself may not.
+    private func keepOnScreen(_ frame: NSRect, screen: NSScreen?) -> NSRect {
+        let visible = (screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let slack = Self.margin - 6
-        frame.origin.x = min(max(frame.minX, visible.minX - slack), visible.maxX - size.width + slack)
-        frame.origin.y = min(max(frame.minY, visible.minY - slack), visible.maxY - size.height + slack)
+        var frame = frame
+        frame.origin.x = min(max(frame.minX, visible.minX - slack), visible.maxX - frame.width + slack)
+        frame.origin.y = min(max(frame.minY, visible.minY - slack), visible.maxY - frame.height + slack)
         return frame
     }
 
@@ -424,7 +433,7 @@ struct MiniPlayerView: View {
         VStack(spacing: 10) {
             HStack {
                 Spacer()
-                CircleButton(icon: "xmark", label: "Закрыть", action: close)
+                CircleButton(icon: "xmark", label: String(localized: "Закрыть"), action: close)
             }
             Image(systemName: icon)
                 .font(.system(size: 38, weight: .semibold))
@@ -488,8 +497,11 @@ private struct TrackCard: View {
     let showSettings: () -> Void
 
     @State private var copied = false
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
 
     private var spins: Bool { preferences.popupCoverShape == .circle && preferences.popupSpinsRecord }
+    /// The panel is open and on screen. Timers that redraw it only run then.
+    private var shown: Bool { model.presented && model.onScreen }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -501,10 +513,11 @@ private struct TrackCard: View {
             }
             info
             if sleepTimer.isActive { sleepStatus }
-            ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime)
+            ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime, ticking: animating)
             controls
             if preferences.popupShowsLyrics {
-                LyricsPanel(player: player, lyrics: lyrics, model: model, track: track, accent: accent, compact: width < 280)
+                LyricsPanel(player: player, lyrics: lyrics, model: model, track: track, accent: accent,
+                            compact: width < 280, ticking: animating)
             }
             if preferences.popupShowsVolume, let volume = track.volume {
                 VolumeBar(player: player, volume: volume, accent: accent)
@@ -559,18 +572,21 @@ private struct TrackCard: View {
         .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
         .animation(.spring(response: 0.45, dampingFraction: 0.75), value: track.playing)
         .animation(.easeInOut(duration: 0.45), value: publisher.coverImage)
+        // Only the picture is hidden from VoiceOver, not the buttons over it.
+        .accessibilityHidden(true)
         .overlay(alignment: .top) {
             HStack(spacing: 6) {
-                CircleButton(icon: "gearshape.fill", label: "Настройки", action: showSettings)
+                CircleButton(icon: "gearshape.fill", label: String(localized: "Настройки"), action: showSettings)
                 sleepMenu
                 Spacer()
-                CircleButton(icon: "arrow.up.forward.app.fill", label: "Открыть \(player.source.title)", action: player.openPlayer)
-                CircleButton(icon: "xmark", label: "Закрыть", action: close)
+                CircleButton(icon: "arrow.up.forward.app.fill", label: String(localized: "Открыть \(player.source.title)"),
+                             action: player.openPlayer)
+                CircleButton(icon: "xmark", label: String(localized: "Закрыть"), action: close)
             }
             .padding(8)
-            .opacity(hovering || sleepTimer.isActive ? 1 : 0)
+            // They appear on hover, which VoiceOver never does.
+            .opacity(hovering || sleepTimer.isActive || voiceOver ? 1 : 0)
         }
-        .accessibilityHidden(true)
     }
 
     private var sleepMenu: some View {
@@ -600,7 +616,7 @@ private struct TrackCard: View {
     }
 
     private var sleepStatus: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.periodic(from: .now, by: shown ? 1 : 3600)) { context in
             HStack(spacing: 6) {
                 Image(systemName: "moon.zzz.fill")
                 if let deadline = sleepTimer.deadline {
@@ -855,7 +871,7 @@ private struct HistoryRow: View {
         }
         .disabled(!entry.playable)
         .onHover { hovering = $0 }
-        .help(entry.playable ? "Включить «\(entry.title)»" : entry.title)
+        .help(entry.playable ? String(localized: "Включить «\(entry.title)»") : entry.title)
         .accessibilityLabel("\(entry.title), \(entry.artist)")
         .contextMenu {
             if entry.playable {
@@ -872,7 +888,7 @@ private struct HistoryRow: View {
         }
     }
 
-    /// String(localized: "сейчас"), String(localized: "5 мин"), String(localized: "3 ч"), String(localized: "2 дн").
+    /// "сейчас", "5 мин", "3 ч", "2 дн".
     static func age(of date: Date) -> String {
         let seconds = max(0, Date().timeIntervalSince(date))
         switch seconds {
@@ -891,6 +907,8 @@ private struct ScrubBar: View {
     let track: Track
     let accent: Color
     let showTime: Bool
+    /// The track plays and the panel is on screen: the bar moves on its own.
+    let ticking: Bool
 
     @State private var dragging: Double?
     @State private var target: Double?
@@ -898,7 +916,7 @@ private struct ScrubBar: View {
     @State private var hovering = false
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: track.playing && dragging == nil ? 0.5 : 3600)) { context in
+        TimelineView(.periodic(from: .now, by: ticking && dragging == nil ? 0.5 : 3600)) { context in
             let position = displayed(at: context.date)
             VStack(spacing: 5) {
                 GeometryReader { geometry in
@@ -911,12 +929,15 @@ private struct ScrubBar: View {
                     .frame(height: thick)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
+                    // A stream without a known length has nowhere to seek to: a click would
+                    // jump to its start.
                     .gesture(DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            guard track.duration > 0 else { return }
                             dragging = seconds(at: value.location.x, width: geometry.size.width)
                         }
                         .onEnded { value in
-                            seek(seconds(at: value.location.x, width: geometry.size.width))
+                            if track.duration > 0 { seek(seconds(at: value.location.x, width: geometry.size.width)) }
                             dragging = nil
                         })
                 }
@@ -937,6 +958,7 @@ private struct ScrubBar: View {
         .accessibilityLabel("Позиция в треке")
         .accessibilityValue(TrackPinCard.time(displayed(at: .now)))
         .accessibilityAdjustableAction { direction in
+            guard track.duration > 0 else { return }
             let now = displayed(at: .now)
             seek(direction == .increment ? min(track.duration, now + 5) : max(0, now - 5))
         }
@@ -976,6 +998,8 @@ private struct LyricsPanel: View {
     let track: Track
     let accent: Color
     let compact: Bool
+    /// The track plays and the panel is on screen: the current line moves on its own.
+    let ticking: Bool
 
     private var height: CGFloat { compact ? 104 : 124 }
 
@@ -1015,7 +1039,7 @@ private struct LyricsPanel: View {
             .scrollArea()
             .id(LyricsStore.key(for: track))
         case let .loaded(.synced(lines)):
-            TimelineView(.periodic(from: .now, by: track.playing ? 0.25 : 3600)) { context in
+            TimelineView(.periodic(from: .now, by: ticking ? 0.25 : 3600)) { context in
                 SyncedLyrics(lines: lines, current: Lyrics.currentLine(in: lines, at: position(at: context.date)),
                              compact: compact, seek: { player.send(.seek($0, track.id)) },
                              follows: { [model] in Date().timeIntervalSince(model.listScrolledAt) > 4 })

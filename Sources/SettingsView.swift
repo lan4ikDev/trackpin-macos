@@ -326,7 +326,7 @@ private struct ThemeGrid: View {
 
 // MARK: Theme editor
 
-/// Colors of the String(localized: "Своя") theme. Changes reach the widget right away, like any other setting.
+/// Colors of the «Своя» (custom) theme. Changes reach the widget right away, like any other setting.
 private struct CustomThemeEditor: View {
     @Binding var theme: CustomTheme
     let palette: ArtworkPalette?
@@ -383,7 +383,11 @@ private struct ThemeFileButtons: View {
         let panel = NSSavePanel()
         panel.title = String(localized: "Экспорт темы")
         panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "\(theme.name.replacingOccurrences(of: "/", with: "-")).json"
+        // A name without characters that macOS file names cannot hold; never an empty one, which
+        // would make a hidden ".json" file.
+        let base = theme.name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        panel.nameFieldStringValue = "\(base.isEmpty ? "TrackPin" : base).json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try theme.exportData().write(to: url, options: .atomic)
@@ -535,7 +539,8 @@ private struct HelpSettings: View {
         Form {
             Section("Состояние") {
                 LabeledContent(player.source.settingsTitle, value: spotifyStatus)
-                LabeledContent("Связь с виджетом", value: publisher.listening ? "Работает" : "Не запущена")
+                LabeledContent("Связь с виджетом",
+                               value: publisher.listening ? String(localized: "Работает") : String(localized: "Не запущена"))
                 if player.playback == .denied {
                     Text(player.source.accessHint).font(.caption).foregroundStyle(.secondary)
                     Button("Открыть настройки доступа") { player.source.requestAccess() }

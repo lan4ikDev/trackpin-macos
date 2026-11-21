@@ -24,6 +24,7 @@ final class ListeningStats: ObservableObject {
     private var saveWork: DispatchWorkItem?
     private var last: (track: Track, at: Date)?
     private static let keep = 60
+    private static let ioQueue = DispatchQueue(label: "dev.lan4ik.needle.stats", qos: .utility)
 
     init(fileURL: URL? = ListeningStats.defaultURL) {
         self.fileURL = fileURL
@@ -44,6 +45,12 @@ final class ListeningStats: ObservableObject {
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
+    /// Forgets the last read, for while counting is turned off: turned on again later, the
+    /// time in between must not count as listening.
+    func pause() {
+        last = nil
+    }
+
     /// Called with every playback state TrackPin reads.
     func observe(_ playback: Playback, at now: Date = Date()) {
         let current = playback.currentTrack
@@ -58,8 +65,9 @@ final class ListeningStats: ObservableObject {
             listened = current.position - previous.track.position
             if listened < 0 { listened = 0 } // Seeked back or repeat one: count nothing for this gap.
         } else {
-            // The previous track played on until it ended or was switched.
-            listened = max(0, previous.track.duration - previous.track.position)
+            // The previous track played on until it ended or was switched. A stream without a
+            // length (radio) has no end to count to: it played until now.
+            listened = previous.track.duration > 0 ? max(0, previous.track.duration - previous.track.position) : elapsed
             if let current, current.playing { countPlay(current, at: now) }
         }
         add(min(listened, elapsed + 2), artist: previous.track.artist, at: now)
@@ -119,7 +127,7 @@ final class ListeningStats: ObservableObject {
         }
         let snapshot = days
         let work = DispatchWorkItem {
-            DispatchQueue.global(qos: .utility).async {
+            Self.ioQueue.async {
                 guard let data = try? JSONEncoder().encode(snapshot) else { return }
                 try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? data.write(to: fileURL, options: .atomic)
@@ -135,7 +143,10 @@ final class ListeningStats: ObservableObject {
         saveWork?.cancel()
         saveWork = nil
         guard let data = try? JSONEncoder().encode(days) else { return }
-        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: fileURL, options: .atomic)
+        // After any scheduled save still running, so an older one cannot overwrite this.
+        Self.ioQueue.sync {
+            try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: fileURL, options: .atomic)
+        }
     }
 }

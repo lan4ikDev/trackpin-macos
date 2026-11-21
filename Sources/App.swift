@@ -273,6 +273,31 @@ enum SelfTest {
                   day.tracks["A — Artist A"] == 1, day.tracks["B — Artist B"] == 1 else {
                 fatalError("Listening stats are wrong: \(day)")
             }
+            // A radio stream has no length: a song counts until the next one starts.
+            let radio = ListeningStats(fileURL: nil)
+            func stream(_ id: String) -> Playback {
+                .track(Track(id: id, title: id, artist: "Radio", artwork: nil, duration: 0, position: 0, playing: true))
+            }
+            radio.observe(stream("R1"), at: start)
+            radio.observe(stream("R2"), at: start.addingTimeInterval(40))
+            guard abs((radio.days[ListeningStats.key(for: start)]?.artists["Radio"] ?? 0) - 40) < 0.5 else {
+                fatalError("Listening time of a stream is wrong")
+            }
+        }
+        // Widget reloads: a track moving on as expected, a seek, a stream (no length) moving on,
+        // its length showing up late, and a volume change.
+        let read = Date()
+        func widget(_ duration: Double, _ position: Double, volume: Int = 50, after seconds: Double = 0) -> WidgetSnapshot {
+            WidgetSnapshot(playback: .track(Track(id: "w", title: "W", artist: "A", artwork: nil, duration: duration,
+                                                  position: position, playing: true, volume: volume)),
+                           sampledAt: read.addingTimeInterval(seconds), cover: nil, palette: nil, style: WidgetStyle())
+        }
+        guard WidgetPublisher.change(from: widget(200, 10), to: widget(200, 15, after: 5)) == .nothing,
+              WidgetPublisher.change(from: widget(200, 10), to: widget(200, 40, after: 5)) == .visible,
+              WidgetPublisher.change(from: widget(0, 10), to: widget(0, 15, after: 5)) == .nothing,
+              WidgetPublisher.change(from: widget(0, 10), to: widget(200, 15, after: 5)) == .visible,
+              WidgetPublisher.change(from: widget(200, 10), to: widget(200, 10, volume: 60)) == .volume else {
+            fatalError("Widget reloads are decided wrongly")
         }
         print("Self-test passed")
     }
@@ -316,7 +341,12 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         player.$playback
             .removeDuplicates()
             .combineLatest(preferences.$style.removeDuplicates(), player.$source.removeDuplicates())
-            .sink { [weak self] playback, style, source in self?.publisher.publish(playback, style: style, source: source) }
+            .sink { [weak self] playback, style, source in
+                guard let self else { return }
+                // With the time of the read: a style change between two reads must not move the
+                // widget's position back to where the track was at the last read.
+                self.publisher.publish(playback, style: style, source: source, sampledAt: self.player.sampledAt)
+            }
             .store(in: &observations)
         preferences.$sourceSelection
             .sink { [weak self] selection in self?.player.selection = selection }
@@ -327,8 +357,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         // Stats need every read, paused ones too, to know where listening stopped.
         player.$playback
             .sink { [weak self] playback in
-                guard let self, self.preferences.keepHistory else { return }
-                self.stats.observe(playback)
+                guard let self else { return }
+                if self.preferences.keepHistory { self.stats.observe(playback) } else { self.stats.pause() }
             }
             .store(in: &observations)
         // `record` ignores repeated reads of the same play, so every playing read can go in.
@@ -492,7 +522,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
             case "open":
                 switch preferences.tapAction {
                 case .spotify: player.openPlayer()
-                case .player: miniPlayer.toggleFromWidget(at: NSEvent.mouseLocation)
+                case .player:
+                    // A closed player: the widget says "click to open" it, and the mini player
+                    // would only show a button that does the same.
+                    if player.playback == .closed && !miniPlayer.isVisible {
+                        player.openPlayer()
+                    } else {
+                        miniPlayer.toggleFromWidget(at: NSEvent.mouseLocation)
+                    }
                 case .settings: showSettings()
                 }
             case "reload": publisher.reloadWidgets()

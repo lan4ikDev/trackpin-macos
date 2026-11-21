@@ -94,15 +94,20 @@ final class Player: NSObject, ObservableObject {
             guard selection != oldValue else { return }
             if case let .fixed(fixed) = selection, fixed != source {
                 source = fixed
-                pending.removeAll()
+                dropPending()
             }
+            leaveBrowserIfNotScanned()
             refresh(probe: true)
         }
     }
     /// Automatic mode also looks for Yandex Music in browser tabs. Off by default: asking a
     /// browser makes macOS show an automation prompt for it.
     var scansBrowser = false {
-        didSet { if scansBrowser != oldValue { refresh(probe: true) } }
+        didSet {
+            guard scansBrowser != oldValue else { return }
+            leaveBrowserIfNotScanned()
+            refresh(probe: true)
+        }
     }
 
     var foregroundInterval: TimeInterval = 1 { didSet { if foregroundInterval != oldValue { schedule() } } }
@@ -204,9 +209,36 @@ final class Player: NSObject, ObservableObject {
            let origin = backends.values.first(where: { $0.changeNotifications.contains(note.name.rawValue) }),
            origin.source != source {
             source = origin.source
-            pending.removeAll()
+            dropPending()
         }
         refresh()
+    }
+
+    /// Forgets the queued commands of the previous player. Their callers (a widget button waits
+    /// for its answer) still get one, the current state, instead of waiting until they time out.
+    private func dropPending() {
+        let dropped = pending
+        pending.removeAll()
+        for command in dropped { command.completion?(playback) }
+    }
+
+    /// Automatic mode without the browser must not stay on a browser tab it found earlier: it
+    /// would go on asking the browser, with the automation prompt this setting is there to avoid.
+    /// Moves to a running player (or Spotify); the next read then picks the one that plays.
+    private func leaveBrowserIfNotScanned() {
+        guard selection == .automatic, !scansBrowser, source == .yandexWeb else { return }
+        source = MusicSource.allCases.first { $0 != .yandexWeb && backends[$0]?.isAvailable == true } ?? .spotify
+        dropPending()
+    }
+
+    /// `track` as it is now: a playing track has moved on since it was read. A stream without
+    /// a known length keeps its position instead of being clamped to zero.
+    private func advanced(_ track: Track) -> Track {
+        guard track.playing else { return track }
+        var track = track
+        let position = track.position + max(0, Date().timeIntervalSince(sampledAt))
+        track.position = track.duration > 0 ? min(track.duration, position) : position
+        return track
     }
 
     private func schedule() {
@@ -258,10 +290,19 @@ final class Player: NSObject, ObservableObject {
         }
         // Show the new play state right away; the read after the command confirms it.
         var expected: Bool?
-        if command == .toggle || command == .pause, case var .track(track) = playback {
-            if track.playing { track.position = min(track.duration, track.position + Date().timeIntervalSince(sampledAt)) }
+        if command == .toggle || command == .pause, case let .track(current) = playback {
+            var track = advanced(current)
             track.playing = command == .pause ? false : !track.playing
             expected = track.playing
+            sampledAt = Date()
+            playback = .track(track)
+        }
+        // The same for the volume, so the volume bar follows a scroll or a drag without lagging.
+        // The position moves on with it: the listening stats pair the state with the time it
+        // is published at, and an old position there would lose the time since the last read.
+        if case let .volume(level) = command, case let .track(current) = playback, current.volume != nil {
+            var track = advanced(current)
+            track.volume = min(100, max(0, level))
             sampledAt = Date()
             playback = .track(track)
         }

@@ -72,6 +72,9 @@ struct WidgetSnapshot: Codable, Equatable {
     var style: WidgetStyle
     /// The player the playback comes from. Missing in snapshots of older versions: Spotify.
     var source: MusicSource? = nil
+    /// The app is still downloading the cover of this track, so the widget should ask again
+    /// soon. Nil in snapshots of older versions, and false when the cover failed to load.
+    var coverLoading: Bool? = nil
 
     var sourceTitle: String { (source ?? .spotify).title }
 

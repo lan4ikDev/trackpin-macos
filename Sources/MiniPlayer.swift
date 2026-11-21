@@ -104,20 +104,30 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     }
 
     // MARK: Gestures
+    //
+    // Two fingers sideways switch the track, up and down change the volume. Each trackpad
+    // gesture keeps the direction it started with, so a slightly diagonal scroll does not jump
+    // between the two. Over the lyrics and the history list the scroll belongs to the list
+    // (only a sideways swipe still switches the track there).
+
+    private enum Axis { case horizontal, vertical }
 
     private var scrollMonitor: Any?
+    /// The direction of the current trackpad gesture, decided by its first movement.
+    private var gestureAxis: Axis?
+    /// Whether the current trackpad gesture started over the lyrics or the history.
+    private var gestureOverList = false
     /// Horizontal distance of the current trackpad gesture, and whether it already switched.
     private var swipeDistance: CGFloat = 0
     private var swipeDone = false
-    /// The volume being set by scrolling; the player's reported value lags behind.
+    /// The volume being set by scrolling, with its fraction; the player's reported value lags behind.
     private var scrollVolume: Double?
     private var scrollVolumeAt = Date.distantPast
 
     private func startGestures() {
         guard scrollMonitor == nil else { return }
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-            guard let self, self.preferences.popupGestures, event.window === self.panel,
-                  !self.isOverScrollableContent(event) else { return event }
+            guard let self, self.preferences.popupGestures, event.window === self.panel else { return event }
             return self.handleScroll(event) ? nil : event
         }
     }
@@ -125,32 +135,55 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
     private func stopGestures() {
         if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
         scrollMonitor = nil
+        gestureAxis = nil
     }
 
-    /// The lyrics and the history scroll on their own; gestures apply everywhere else.
-    private func isOverScrollableContent(_ event: NSEvent) -> Bool {
-        guard let content = panel?.contentView,
-              var view = content.hitTest(content.convert(event.locationInWindow, from: nil)) else { return false }
-        while let parent = view.superview {
-            if let scroll = view as? NSScrollView, scroll.hasVerticalScroller || scroll.documentView != nil {
-                return (scroll.documentView?.frame.height ?? 0) > scroll.contentSize.height + 1
-            }
-            view = parent
-        }
-        return false
+    /// True over the lyrics or the history list. Their frames come from the SwiftUI views
+    /// (`scrollArea()`), in the hosting view's coordinates with the origin at the top left.
+    private func isOverList(_ event: NSEvent) -> Bool {
+        guard let content = panel?.contentView else { return false }
+        let local = content.convert(event.locationInWindow, from: nil)
+        let point = CGPoint(x: local.x, y: content.isFlipped ? local.y : content.bounds.height - local.y)
+        return model.scrollAreas.contains { $0.contains(point) }
     }
 
-    /// Returns true when the event was used.
+    /// Returns true when the event was used, false to pass it on to the view under the pointer.
     private func handleScroll(_ event: NSEvent) -> Bool {
         // The direction the fingers (or the wheel) actually moved, whatever "natural scrolling" is.
         let sign: CGFloat = event.isDirectionInvertedFromDevice ? 1 : -1
         let dx = event.scrollingDeltaX * sign
         let dy = event.scrollingDeltaY * sign
-        if event.phase == .began { swipeDistance = 0; swipeDone = false }
-        if !event.momentumPhase.isEmpty { return true } // Ignore the inertia after a swipe.
 
-        if abs(dx) > abs(dy) {
-            guard event.hasPreciseScrollingDeltas else { return false }
+        // A mouse wheel: no gesture phases, every click stands alone.
+        if event.phase.isEmpty && event.momentumPhase.isEmpty {
+            if isOverList(event) {
+                model.listScrolledAt = Date()
+                return false
+            }
+            guard dy != 0, abs(dy) >= abs(dx) else { return false }
+            changeVolume(by: Double(dy) * (event.hasPreciseScrollingDeltas ? 0.2 : 3))
+            return true
+        }
+
+        if event.phase.contains(.began) || event.phase.contains(.mayBegin) {
+            gestureAxis = nil
+            gestureOverList = isOverList(event)
+            swipeDistance = 0
+            swipeDone = false
+            scrollVolume = nil
+        }
+        if gestureOverList { model.listScrolledAt = Date() }
+        // The inertia after the fingers lift: a list keeps scrolling, nothing else reacts to it.
+        if !event.momentumPhase.isEmpty { return !gestureOverList }
+        if gestureAxis == nil, dx != 0 || dy != 0 {
+            gestureAxis = abs(dx) > abs(dy) ? .horizontal : .vertical
+        }
+        defer {
+            if event.phase.contains(.ended) || event.phase.contains(.cancelled) { swipeDistance = 0; swipeDone = false }
+        }
+
+        switch gestureAxis {
+        case .horizontal:
             swipeDistance += dx
             if !swipeDone, abs(swipeDistance) > 70 {
                 swipeDone = true
@@ -158,19 +191,26 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
                 player.send(swipeDistance < 0 ? .next : .previous)
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
             }
-            if event.phase == .ended || event.phase == .cancelled { swipeDistance = 0; swipeDone = false }
+            // A vertical list ignores sideways movement anyway; let it see the whole gesture.
+            return !gestureOverList
+        case .vertical:
+            if gestureOverList { return false }
+            changeVolume(by: Double(dy) * 0.2)
             return true
+        case nil:
+            return !gestureOverList
         }
+    }
 
-        guard dy != 0, let current = player.playback.currentTrack?.volume else { return dy != 0 }
+    /// Fingers up raise the volume. Sends a command only when the whole percent changes.
+    private func changeVolume(by delta: Double) {
+        guard let current = player.playback.currentTrack?.volume else { return }
         if scrollVolume == nil || Date().timeIntervalSince(scrollVolumeAt) > 1.5 { scrollVolume = Double(current) }
-        // Trackpads report pixels, mouse wheels report lines.
-        let step = event.hasPreciseScrollingDeltas ? Double(dy) * 0.35 : Double(dy) * 4
-        let volume = min(100, max(0, (scrollVolume ?? Double(current)) - step))
+        let volume = min(100, max(0, (scrollVolume ?? Double(current)) - delta))
         scrollVolume = volume
         scrollVolumeAt = Date()
-        player.send(.volume(Int(volume.rounded())))
-        return true
+        let level = Int(volume.rounded())
+        if level != current { player.send(.volume(level)) }
     }
 
     private func makePanel() -> MiniPanel {
@@ -206,7 +246,9 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
             var frame = panel.frame
             frame.origin.y += frame.height - size.height
             frame.size = size
-            panel.setFrame(frame, display: true)
+            // The card grows downwards (history, lyrics): near the bottom of the screen it moves
+            // up instead of hanging off the edge.
+            panel.setFrame(self.keepOnScreen(frame, screen: panel.screen), display: true)
         }
     }
 
@@ -220,10 +262,17 @@ final class MiniPlayerController: NSObject, NSWindowDelegate {
         case .center:
             frame.origin = NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2)
         }
-        // The shadow margin may hang off the screen edge; the card itself may not.
+        return keepOnScreen(frame, screen: screen)
+    }
+
+    /// Moves `frame` onto the visible part of `screen`. The shadow margin may hang off the
+    /// screen edge; the card itself may not.
+    private func keepOnScreen(_ frame: NSRect, screen: NSScreen?) -> NSRect {
+        let visible = (screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let slack = Self.margin - 6
-        frame.origin.x = min(max(frame.minX, visible.minX - slack), visible.maxX - size.width + slack)
-        frame.origin.y = min(max(frame.minY, visible.minY - slack), visible.maxY - size.height + slack)
+        var frame = frame
+        frame.origin.x = min(max(frame.minX, visible.minX - slack), visible.maxX - frame.width + slack)
+        frame.origin.y = min(max(frame.minY, visible.minY - slack), visible.maxY - frame.height + slack)
         return frame
     }
 
@@ -271,6 +320,30 @@ final class MiniPlayerModel: ObservableObject {
     @Published var onScreen = true
     /// The recently played list under the controls.
     @Published var showsHistory = false
+    /// Frames of the lyrics and the history list, where scrolling belongs to the list. Not
+    /// published: only the scroll gestures read it.
+    var scrollAreas: [CGRect] = []
+    /// When the user last scrolled one of those lists. The synced lyrics stop following the
+    /// current line for a few seconds after that, instead of jumping back while being read.
+    var listScrolledAt = Date.distantPast
+}
+
+/// Collects the frames of the scrolling lists in the mini player.
+private struct ScrollAreasKey: PreferenceKey {
+    static var defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
+private extension View {
+    /// Marks a scrolling list: the mini player's scroll gestures leave it to the list.
+    func scrollArea() -> some View {
+        background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: ScrollAreasKey.self,
+                                       value: [proxy.frame(in: .named(MiniPlayerView.coordinateSpace))])
+            }
+        }
+    }
 }
 
 final class MiniPanel: NSPanel {
@@ -327,7 +400,12 @@ struct MiniPlayerView: View {
             .environment(\.colorScheme, .dark)
             .buttonStyle(.plain)
             .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hovering = inside } }
+            .coordinateSpace(name: Self.coordinateSpace)
+            .onPreferenceChange(ScrollAreasKey.self) { [model] areas in model.scrollAreas = areas }
     }
+
+    /// The whole hosting view, for the frames of the scrolling lists.
+    static let coordinateSpace = "TrackPinMiniPlayer"
 
     private var name: String { player.source.title }
 
@@ -355,7 +433,7 @@ struct MiniPlayerView: View {
         VStack(spacing: 10) {
             HStack {
                 Spacer()
-                CircleButton(icon: "xmark", label: "Закрыть", action: close)
+                CircleButton(icon: "xmark", label: String(localized: "Закрыть"), action: close)
             }
             Image(systemName: icon)
                 .font(.system(size: 38, weight: .semibold))
@@ -419,8 +497,11 @@ private struct TrackCard: View {
     let showSettings: () -> Void
 
     @State private var copied = false
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
 
     private var spins: Bool { preferences.popupCoverShape == .circle && preferences.popupSpinsRecord }
+    /// The panel is open and on screen. Timers that redraw it only run then.
+    private var shown: Bool { model.presented && model.onScreen }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -432,10 +513,11 @@ private struct TrackCard: View {
             }
             info
             if sleepTimer.isActive { sleepStatus }
-            ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime)
+            ScrubBar(player: player, track: track, accent: accent, showTime: preferences.style.showTime, ticking: animating)
             controls
             if preferences.popupShowsLyrics {
-                LyricsPanel(player: player, lyrics: lyrics, track: track, accent: accent, compact: width < 280)
+                LyricsPanel(player: player, lyrics: lyrics, model: model, track: track, accent: accent,
+                            compact: width < 280, ticking: animating)
             }
             if preferences.popupShowsVolume, let volume = track.volume {
                 VolumeBar(player: player, volume: volume, accent: accent)
@@ -490,18 +572,21 @@ private struct TrackCard: View {
         .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
         .animation(.spring(response: 0.45, dampingFraction: 0.75), value: track.playing)
         .animation(.easeInOut(duration: 0.45), value: publisher.coverImage)
+        // Only the picture is hidden from VoiceOver, not the buttons over it.
+        .accessibilityHidden(true)
         .overlay(alignment: .top) {
             HStack(spacing: 6) {
-                CircleButton(icon: "gearshape.fill", label: "Настройки", action: showSettings)
+                CircleButton(icon: "gearshape.fill", label: String(localized: "Настройки"), action: showSettings)
                 sleepMenu
                 Spacer()
-                CircleButton(icon: "arrow.up.forward.app.fill", label: "Открыть \(player.source.title)", action: player.openPlayer)
-                CircleButton(icon: "xmark", label: "Закрыть", action: close)
+                CircleButton(icon: "arrow.up.forward.app.fill", label: String(localized: "Открыть \(player.source.title)"),
+                             action: player.openPlayer)
+                CircleButton(icon: "xmark", label: String(localized: "Закрыть"), action: close)
             }
             .padding(8)
-            .opacity(hovering || sleepTimer.isActive ? 1 : 0)
+            // They appear on hover, which VoiceOver never does.
+            .opacity(hovering || sleepTimer.isActive || voiceOver ? 1 : 0)
         }
-        .accessibilityHidden(true)
     }
 
     private var sleepMenu: some View {
@@ -531,7 +616,7 @@ private struct TrackCard: View {
     }
 
     private var sleepStatus: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.periodic(from: .now, by: shown ? 1 : 3600)) { context in
             HStack(spacing: 6) {
                 Image(systemName: "moon.zzz.fill")
                 if let deadline = sleepTimer.deadline {
@@ -730,6 +815,7 @@ private struct HistoryList: View {
                     }
                 }
                 .frame(width: width, height: Self.rowHeight * CGFloat(min(history.entries.count, Self.visibleRows)))
+                .scrollArea()
             }
         }
         .padding(.top, 2)
@@ -785,7 +871,7 @@ private struct HistoryRow: View {
         }
         .disabled(!entry.playable)
         .onHover { hovering = $0 }
-        .help(entry.playable ? "Включить «\(entry.title)»" : entry.title)
+        .help(entry.playable ? String(localized: "Включить «\(entry.title)»") : entry.title)
         .accessibilityLabel("\(entry.title), \(entry.artist)")
         .contextMenu {
             if entry.playable {
@@ -802,7 +888,7 @@ private struct HistoryRow: View {
         }
     }
 
-    /// String(localized: "сейчас"), String(localized: "5 мин"), String(localized: "3 ч"), String(localized: "2 дн").
+    /// "сейчас", "5 мин", "3 ч", "2 дн".
     static func age(of date: Date) -> String {
         let seconds = max(0, Date().timeIntervalSince(date))
         switch seconds {
@@ -821,6 +907,8 @@ private struct ScrubBar: View {
     let track: Track
     let accent: Color
     let showTime: Bool
+    /// The track plays and the panel is on screen: the bar moves on its own.
+    let ticking: Bool
 
     @State private var dragging: Double?
     @State private var target: Double?
@@ -828,7 +916,7 @@ private struct ScrubBar: View {
     @State private var hovering = false
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: track.playing && dragging == nil ? 0.5 : 3600)) { context in
+        TimelineView(.periodic(from: .now, by: ticking && dragging == nil ? 0.5 : 3600)) { context in
             let position = displayed(at: context.date)
             VStack(spacing: 5) {
                 GeometryReader { geometry in
@@ -841,12 +929,15 @@ private struct ScrubBar: View {
                     .frame(height: thick)
                     .frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
+                    // A stream without a known length has nowhere to seek to: a click would
+                    // jump to its start.
                     .gesture(DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            guard track.duration > 0 else { return }
                             dragging = seconds(at: value.location.x, width: geometry.size.width)
                         }
                         .onEnded { value in
-                            seek(seconds(at: value.location.x, width: geometry.size.width))
+                            if track.duration > 0 { seek(seconds(at: value.location.x, width: geometry.size.width)) }
                             dragging = nil
                         })
                 }
@@ -867,6 +958,7 @@ private struct ScrubBar: View {
         .accessibilityLabel("Позиция в треке")
         .accessibilityValue(TrackPinCard.time(displayed(at: .now)))
         .accessibilityAdjustableAction { direction in
+            guard track.duration > 0 else { return }
             let now = displayed(at: .now)
             seek(direction == .increment ? min(track.duration, now + 5) : max(0, now - 5))
         }
@@ -901,9 +993,13 @@ private struct ScrubBar: View {
 private struct LyricsPanel: View {
     @ObservedObject var player: Player
     @ObservedObject var lyrics: LyricsStore
+    /// Not observed: only read when the current line changes.
+    let model: MiniPlayerModel
     let track: Track
     let accent: Color
     let compact: Bool
+    /// The track plays and the panel is on screen: the current line moves on its own.
+    let ticking: Bool
 
     private var height: CGFloat { compact ? 104 : 124 }
 
@@ -940,11 +1036,13 @@ private struct LyricsPanel: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
+            .scrollArea()
             .id(LyricsStore.key(for: track))
         case let .loaded(.synced(lines)):
-            TimelineView(.periodic(from: .now, by: track.playing ? 0.25 : 3600)) { context in
+            TimelineView(.periodic(from: .now, by: ticking ? 0.25 : 3600)) { context in
                 SyncedLyrics(lines: lines, current: Lyrics.currentLine(in: lines, at: position(at: context.date)),
-                             compact: compact, seek: { player.send(.seek($0, track.id)) })
+                             compact: compact, seek: { player.send(.seek($0, track.id)) },
+                             follows: { [model] in Date().timeIntervalSince(model.listScrolledAt) > 4 })
             }
             .id(LyricsStore.key(for: track))
         }
@@ -968,6 +1066,8 @@ private struct SyncedLyrics: View {
     let current: Int?
     let compact: Bool
     let seek: (Double) -> Void
+    /// False for a few seconds after the user scrolled the lyrics by hand.
+    let follows: () -> Bool
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -990,8 +1090,10 @@ private struct SyncedLyrics: View {
                 .padding(.vertical, compact ? 40 : 48)
                 .animation(.easeInOut(duration: 0.25), value: current)
             }
+            .scrollArea()
             .onAppear { proxy.scrollTo(current ?? 0, anchor: .center) }
             .onChange(of: current) { _, line in
+                guard follows() else { return }
                 withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line ?? 0, anchor: .center) }
             }
         }
@@ -1099,9 +1201,9 @@ private struct VolumeBar: View {
                         dragging = next
                         player.send(.volume(Int(next.rounded())))
                     }
-                    .onEnded { _ in
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { dragging = nil }
-                    })
+                    // The player shows the new volume right away, so the bar can let go at once.
+                    // A delayed reset could also land in the middle of the next drag.
+                    .onEnded { _ in dragging = nil })
             }
             .frame(height: 14)
             Image(systemName: "speaker.wave.3.fill").font(.system(size: 11))

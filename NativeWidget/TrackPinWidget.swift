@@ -116,9 +116,11 @@ struct Provider: AppIntentTimelineProvider {
         var next = now.addingTimeInterval(15 * 60)
         if !entry.snapshot.hostReachable {
             next = now.addingTimeInterval(5 * 60)
-        } else if let track = entry.snapshot.playback.currentTrack, track.artwork != nil, entry.snapshot.cover == nil {
+        } else if let track = entry.snapshot.playback.currentTrack, track.artwork != nil, entry.snapshot.cover == nil,
+                  entry.snapshot.coverLoading != false {
             // The app is still downloading the cover: ask again shortly instead of relying only
-            // on the app's reload request, which macOS may delay.
+            // on the app's reload request, which macOS may delay. Not when the cover failed:
+            // the widget would otherwise wake up every 4 seconds for the whole track.
             next = now.addingTimeInterval(4)
         } else if let track = entry.snapshot.playback.currentTrack, track.playing, track.duration > 0 {
             // Ask again right after the track ends, in case the app's reload request is throttled.

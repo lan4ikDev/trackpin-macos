@@ -127,7 +127,7 @@ def to_html(markdown):
     flush()
     return "\n".join(out)
 
-notes = to_html(pathlib.Path(notes_file).read_text()).replace("]]>", "]]&gt;")
+notes = to_html(pathlib.Path(notes_file).read_text(encoding="utf-8")).replace("]]>", "]]&gt;")
 path = pathlib.Path("appcast.xml")
 base = f"https://github.com/{repo}/releases"
 item = f"""    <item>
@@ -144,7 +144,7 @@ item = f"""    <item>
     </item>
 """
 if path.exists():
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     # Replace an item of the same build, otherwise put the new one first.
     text = re.sub(r"    <item>\n(?:(?!</item>).)*?<sparkle:version>%s</sparkle:version>.*?</item>\n" % re.escape(build), "", text, flags=re.S)
     text = text.replace("    <item>", item + "    <item>", 1) if "<item>" in text else text.replace("  </channel>", item + "  </channel>")
@@ -157,7 +157,7 @@ else:
 {item}  </channel>
 </rss>
 """
-path.write_text(text)
+path.write_text(text, encoding="utf-8")
 PY
 echo "Release $version ($build): $dmg"
 
